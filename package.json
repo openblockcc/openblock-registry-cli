@@ -1,0 +1,46 @@
+{
+    "name": "openblock-registry-cli",
+    "version": "1.0.0",
+    "description": "CLI tool for publishing plugins to OpenBlock Registry",
+    "author": "OpenBlock Team",
+    "license": "MIT",
+    "bin": {
+        "openblock-registry-cli": "./bin/openblock-registry-cli.js"
+    },
+    "scripts": {
+        "lint": "eslint . --ext .js",
+        "lint:fix": "eslint . --ext .js --fix",
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "keywords": [
+        "openblock",
+        "cli",
+        "registry",
+        "plugin",
+        "extension"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/openblockcc/openblock-registry-cli"
+    },
+    "engines": {
+        "node": ">=14.0.0"
+    },
+    "dependencies": {
+        "adm-zip": "^0.5.16",
+        "chalk": "^4.1.2",
+        "commander": "^9.5.0",
+        "esbuild": "^0.27.2",
+        "fs-extra": "^11.2.0",
+        "inquirer": "^8.2.6",
+        "node-fetch": "^2.7.0",
+        "openblock-l10n": "^3.15.20240615153110",
+        "ora": "^5.4.1",
+        "semver": "^7.5.4"
+    },
+    "devDependencies": {
+        "babel-eslint": "^10.0.1",
+        "eslint": "^5.3.0",
+        "eslint-config-scratch": "^5.0.0"
+    }
+}

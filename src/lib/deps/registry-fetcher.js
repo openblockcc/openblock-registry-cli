@@ -115,7 +115,7 @@ const formatBytes = bytes => {
  * @param {number} [options.size] - Expected file size for progress display
  * @param {Function} [options.onProgress] - Progress callback (percent, speed, downloaded, total)
  * @param {Function} [options.onStatus] - Status callback (status: 'downloading'|'verifying'|'extracting')
- * @returns {Promise<void>}
+ * @returns {Promise<void>} Download and extraction result
  */
 const downloadAndExtract = async (url, destDir, cacheDir, options = {}) => {
     // Use archiveFileName or fallback to temp name
@@ -342,7 +342,7 @@ const fetchToolchain = async (projectDir, name, options = {}) => {
             };
         }
 
-        // Parse checksum - handle "SHA-256:xxx" format
+        // Parse checksum - handle "SHA-256:hash" format
         if (sha256 && sha256.includes(':')) {
             sha256 = sha256.split(':')[1];
         }

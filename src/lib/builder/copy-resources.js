@@ -6,6 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const {shouldIgnore} = require('./build-ignore');
+const {processPackageJsonImages, IMAGE_URL_FIELDS} = require('./image-processor');
 
 /**
  * Copy a single file to destination, creating directories if needed
@@ -18,6 +19,64 @@ const copySingleFile = (srcPath, destPath) => {
         fs.mkdirSync(destDir, {recursive: true});
     }
     fs.copyFileSync(srcPath, destPath);
+};
+
+/**
+ * Process and copy package.json with base64 images
+ * @param {string} projectDir - Project directory
+ * @param {string} srcPath - Source package.json path
+ * @param {string} destPath - Destination package.json path
+ * @returns {Promise<{success: boolean, converted: string[], errors: string[]}>} Processing result
+ */
+const processAndCopyPackageJson = async (projectDir, srcPath, destPath) => {
+    const result = {
+        success: true,
+        converted: [],
+        errors: []
+    };
+
+    try {
+        const packageJson = JSON.parse(fs.readFileSync(srcPath, 'utf-8'));
+
+        // Check if there are image fields to process
+        const openblock = packageJson.openblock || {};
+        const hasImageFields = IMAGE_URL_FIELDS.some(field => {
+            const value = openblock[field];
+            return value &&
+                !value.startsWith('data:') &&
+                !value.startsWith('http://') &&
+                !value.startsWith('https://');
+        });
+
+        if (!hasImageFields) {
+            // No local images to process, just copy
+            copySingleFile(srcPath, destPath);
+            return result;
+        }
+
+        // Process images and convert to base64
+        const processedJson = await processPackageJsonImages(projectDir, packageJson);
+
+        // Track which fields were converted
+        for (const field of IMAGE_URL_FIELDS) {
+            if (openblock[field] && processedJson.openblock[field] !== openblock[field]) {
+                result.converted.push(field);
+            }
+        }
+
+        // Write processed package.json
+        const destDir = path.dirname(destPath);
+        if (!fs.existsSync(destDir)) {
+            fs.mkdirSync(destDir, {recursive: true});
+        }
+        fs.writeFileSync(destPath, JSON.stringify(processedJson, null, 2));
+
+    } catch (error) {
+        result.success = false;
+        result.errors.push(error.message);
+    }
+
+    return result;
 };
 
 /**
@@ -124,5 +183,6 @@ module.exports = {
     getAllFiles,
     copyResources,
     copyChangedFile,
-    cleanDist
+    cleanDist,
+    processAndCopyPackageJson
 };

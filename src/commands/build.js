@@ -8,7 +8,7 @@ const chalk = require('chalk');
 const ora = require('ora');
 
 const {parseBuildIgnore} = require('../lib/builder/build-ignore');
-const {cleanDist, copyResources, copySingleFile} = require('../lib/builder/copy-resources');
+const {cleanDist, copyResources, copySingleFile, processAndCopyPackageJson} = require('../lib/builder/copy-resources');
 const {
     getEntryPoints,
     getSimpleSrcFiles,
@@ -110,6 +110,29 @@ const build = async function (options = {}) {
                 copySingleFile(file, destPath);
             });
             spinner.succeed(`Copied ${simpleSrcFiles.length} simple src file(s)`);
+        }
+
+        // Process package.json images (convert to base64)
+        spinner.start('Processing package.json images...');
+        const packageJsonSrc = path.join(projectDir, 'package.json');
+        const packageJsonDest = path.join(distDir, 'package.json');
+        const imageResult = await processAndCopyPackageJson(projectDir, packageJsonSrc, packageJsonDest);
+
+        if (!imageResult.success) {
+            spinner.fail('Failed to process images');
+            imageResult.errors.forEach(err => {
+                console.error(chalk.red(`  ✖ ${err}`));
+            });
+            process.exit(1);
+        }
+
+        if (imageResult.converted.length > 0) {
+            spinner.succeed(`Converted ${imageResult.converted.length} image(s) to base64`);
+            imageResult.converted.forEach(field => {
+                console.log(chalk.dim(`  - ${field}`));
+            });
+        } else {
+            spinner.succeed('No local images to convert');
         }
 
         console.log(chalk.green('\nBuild complete!\n'));

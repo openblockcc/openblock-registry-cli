@@ -6,15 +6,12 @@
 
 const http = require('http');
 const fetch = require('node-fetch');
-const path = require('path');
-const fs = require('fs-extra');
 
 // Resource Service connection
 const RESOURCE_SERVICE_HOST = 'localhost';
 const RESOURCE_SERVICE_PORT = 20112;
 
-// Cache directory for packages.json
-const DEFAULT_CACHE_DIR = '.openblock/cache';
+// Cache TTL for packages.json
 const PACKAGES_CACHE_TTL = 3600000; // 1 hour in ms
 
 // Cached packages data

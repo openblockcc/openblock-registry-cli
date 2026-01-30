@@ -15,9 +15,7 @@ const path = require('path');
  * @param {string} identifier - Dependency identifier (version string or path)
  * @returns {boolean} True if it's a local path
  */
-const isLocalPath = identifier => {
-    return identifier.startsWith('./') || identifier.startsWith('../');
-};
+const isLocalPath = identifier => identifier.startsWith('./') || identifier.startsWith('../');
 
 /**
  * @typedef {Object} ParsedDependencies
@@ -47,10 +45,10 @@ const parseDependencies = projectDir => {
     const dependencies = openblockConfig.dependencies || {};
 
     const result = {
-        libraries: {},  // All libraries are local: {name: localPath}
+        libraries: {}, // All libraries are local: {name: localPath}
         toolchains: {
-            local: {},  // Local toolchains: {name: localPath}
-            remote: {}  // Remote toolchains: {name: 'latest'}
+            local: {}, // Local toolchains: {name: localPath}
+            remote: {} // Remote toolchains: {name: 'latest'}
         },
         warnings: []
     };
@@ -122,9 +120,7 @@ const validateLocalDependencies = (projectDir, deps) => {
  * @param {ParsedDependencies} deps - Parsed dependencies
  * @returns {boolean} True if there are remote toolchains
  */
-const hasRemoteToolchains = deps => {
-    return Object.keys(deps.toolchains.remote).length > 0;
-};
+const hasRemoteToolchains = deps => Object.keys(deps.toolchains.remote).length > 0;
 
 /**
  * Get absolute paths for all local libraries (for arduino-cli --libraries)
@@ -152,4 +148,3 @@ module.exports = {
     hasRemoteToolchains,
     getLibraryPaths
 };
-

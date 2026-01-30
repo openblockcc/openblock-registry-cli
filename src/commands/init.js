@@ -24,11 +24,9 @@ const PLUGIN_TYPES = [
  * @param {string} id - Plugin ID
  * @returns {string} Class name
  */
-const toClassName = id => {
-    return id
-        .replace(/[-_](.)/g, (_, c) => c.toUpperCase())
-        .replace(/^(.)/, c => c.toUpperCase());
-};
+const toClassName = id => id
+    .replace(/[-_](.)/g, (_, c) => c.toUpperCase())
+    .replace(/^(.)/, c => c.toUpperCase());
 
 /**
  * Replace template placeholders
@@ -60,7 +58,7 @@ const copyTemplateDir = async (srcDir, destDir, vars) => {
 
     for (const item of items) {
         const srcPath = path.join(srcDir, item);
-        let destName = item.replace(/\.tpl$/, '');
+        const destName = item.replace(/\.tpl$/, '');
         const destPath = path.join(destDir, destName);
 
         const stat = fs.statSync(srcPath);
@@ -114,7 +112,8 @@ const init = async function () {
             message: 'Plugin ID (camelCase, e.g. myExtension):',
             validate: input => {
                 if (!/^[a-z][a-zA-Z0-9]*$/.test(input)) {
-                    return 'Plugin ID must start with lowercase letter and contain only letters and numbers (camelCase)';
+                    return 'Plugin ID must start with lowercase letter and ' +
+                        'contain only letters and numbers (camelCase)';
                 }
                 return true;
             }
@@ -129,7 +128,7 @@ const init = async function () {
             type: 'input',
             name: 'pluginName',
             message: 'Plugin name (display name):',
-            default: answers => toClassName(answers.pluginId)
+            default: ans => toClassName(ans.pluginId)
         },
         {
             type: 'input',
@@ -186,7 +185,8 @@ const init = async function () {
             author: answers.author,
             repository: answers.repository,
             className: toClassName(answers.pluginId),
-            year: new Date().getFullYear().toString(),
+            year: new Date().getFullYear()
+                .toString(),
             // For scratch extension: realtime only or both modes
             supportUpload: answers.pluginType === 'extension-scratch-both' ? 'true' : 'false'
         };
@@ -226,4 +226,3 @@ const init = async function () {
 };
 
 module.exports = init;
-

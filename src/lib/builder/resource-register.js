@@ -12,7 +12,7 @@ const RESOURCE_SERVICE_PORT = 20112;
 
 /**
  * Check if Resource Service is running
- * @returns {Promise<{running: boolean, message: string}>}
+ * @returns {Promise<{running: boolean, message: string}>} Service status
  */
 const checkResourceService = () => new Promise(resolve => {
     const options = {
@@ -37,7 +37,8 @@ const checkResourceService = () => new Promise(resolve => {
                 } else {
                     resolve({
                         running: false,
-                        message: `Port ${RESOURCE_SERVICE_PORT} is in use by another service (${json.name || 'unknown'})`
+                        message: `Port ${RESOURCE_SERVICE_PORT} is in use by another service ` +
+                            `(${json.name || 'unknown'})`
                     });
                 }
             } catch {
@@ -178,7 +179,7 @@ const registerToResourceService = (projectDir, distDir) => new Promise(resolve =
  * Merge a toolchain to unified directory via Resource Service.
  * @param {string} platform - Platform type ('arduino' or 'micropython')
  * @param {string} sourcePath - Path to the extracted toolchain
- * @returns {Promise<{success: boolean, merged: number, skipped: number, message: string}>}
+ * @returns {Promise<{success: boolean, merged: number, skipped: number, message: string}>} Merge result
  */
 const mergeToolchain = (platform, sourcePath) => new Promise(resolve => {
     try {
@@ -269,7 +270,7 @@ const mergeToolchain = (platform, sourcePath) => new Promise(resolve => {
 /**
  * Merge multiple toolchains to unified directory via Resource Service.
  * @param {Array<{name: string, extractPath: string}>} toolchainResults - Toolchain fetch results with extractPath
- * @returns {Promise<{success: boolean, merged: number, errors: string[]}>}
+ * @returns {Promise<{success: boolean, merged: number, errors: string[]}>} Merge results
  */
 const registerToolchainMerge = async toolchainResults => {
     let totalMerged = 0;

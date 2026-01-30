@@ -636,6 +636,7 @@ const generateTranslationFile = translations => {
     let header;
     if (isLocalMode) {
         header = `/* eslint-disable quote-props */
+/* eslint-disable max-len */
 /**
  * Translation file for this resouce.
  *
@@ -655,6 +656,7 @@ const generateTranslationFile = translations => {
 `;
     } else {
         header = `/* eslint-disable quote-props */
+/* eslint-disable max-len */
 /**
  * Translation file - automatically generated from Transifex.
  * Do NOT modify this file manually.

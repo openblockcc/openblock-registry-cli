@@ -16,7 +16,7 @@ const logger = require('../utils/logger');
  * Execute validate command
  */
 const validate = async function () {
-    console.log(chalk.cyan('\n🔍 OpenBlock Plugin Validator\n'));
+    console.log(chalk.cyan('\nOpenBlock Plugin Validator\n'));
 
     const spinner = ora();
     const results = [];
@@ -47,7 +47,7 @@ const validate = async function () {
         results.push({name: 'remote-repo', status: 'pass'});
 
         // Summary
-        console.log(chalk.green('\n✅ All validations passed!\n'));
+        console.log(chalk.green('\n[OK] All validations passed!\n'));
         console.log('   Your plugin is ready to publish.');
         console.log(`   Run ${chalk.cyan('openblock-cli publish')} to submit.\n`);
 

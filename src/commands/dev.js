@@ -53,14 +53,14 @@ const resolveDependencies = async projectDir => {
     // Show warnings from parsing (e.g., remote libraries not supported)
     if (deps.warnings && deps.warnings.length > 0) {
         console.log(chalk.yellow('\nDependency warnings:'));
-        deps.warnings.forEach(warn => console.log(chalk.yellow(`  ⚠ ${warn}`)));
+        deps.warnings.forEach(warn => console.log(chalk.yellow(`  [WARN] ${warn}`)));
     }
 
     // Validate local dependencies
     const localValidation = validateLocalDependencies(projectDir, deps);
     if (!localValidation.valid) {
         console.log(chalk.red('\nLocal dependency errors:'));
-        localValidation.errors.forEach(err => console.log(chalk.red(`  ✖ ${err}`)));
+        localValidation.errors.forEach(err => console.log(chalk.red(`  [ERROR] ${err}`)));
         return {success: false, toolchainResults: []};
     }
 
@@ -112,7 +112,7 @@ const resolveDependencies = async projectDir => {
     if (tcResult.success) {
         const skipped = tcResult.results.filter(r => r.skipped).length;
         const downloaded = tcResult.results.filter(r => !r.skipped && r.success).length;
-        console.log(chalk.green(`✔ Toolchains: ${downloaded} downloaded, ${skipped} already exist`));
+        console.log(chalk.green(`Toolchains: ${downloaded} downloaded, ${skipped} already exist`));
 
         // Merge downloaded toolchains to unified directory
         const downloadedResults = tcResult.results.filter(r => r.extractPath);
@@ -120,17 +120,17 @@ const resolveDependencies = async projectDir => {
             console.log(chalk.dim('  Merging toolchains to unified directory...'));
             const mergeResult = await registerToolchainMerge(downloadedResults);
             if (mergeResult.success) {
-                console.log(chalk.green(`  ✔ Merged ${mergeResult.merged} components`));
+                console.log(chalk.green(`  [OK] Merged ${mergeResult.merged} components`));
             } else {
-                console.log(chalk.yellow(`  ⚠ Merge completed with errors`));
+                console.log(chalk.yellow(`  [WARN] Merge completed with errors`));
             }
             // Extracted toolchains are kept in .openblock/toolchains/
             // Archives are cached in .openblock/downloads/
         }
     } else {
-        console.log(chalk.red(`✖ Some toolchains failed to download`));
+        console.log(chalk.red(`[FAIL] Some toolchains failed to download`));
         tcResult.results.filter(r => !r.success).forEach(r => {
-            console.log(chalk.red(`  ✖ ${r.name}: ${r.error}`));
+            console.log(chalk.red(`  [ERROR] ${r.name}: ${r.error}`));
         });
     }
 
@@ -154,7 +154,7 @@ const dev = async function () {
     // Check if Resource Service is running first
     const serviceCheck = await checkResourceService();
     if (!serviceCheck.running) {
-        console.log(chalk.red(`✖ ${serviceCheck.message}`));
+        console.log(chalk.red(`[FAIL] ${serviceCheck.message}`));
         console.log(chalk.yellow('\nPlease start OpenBlock Resource Service before running dev command.'));
         process.exit(1);
     }
@@ -252,7 +252,7 @@ const dev = async function () {
         if (!imageResult.success) {
             spinner.fail('Failed to process images');
             imageResult.errors.forEach(err => {
-                console.error(chalk.red(`  ✖ ${err}`));
+                console.error(chalk.red(`  [ERROR] ${err}`));
             });
             process.exit(1);
         }

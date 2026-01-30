@@ -135,22 +135,22 @@ const processLibrariesForPublish = async pluginDir => {
             // Extract as dependency
             result.dependencies.libraries[lib.name] = lib.version;
             result.extracted.push(lib);
-            console.log(`✅ ${lib.name}@${lib.version} → 共享依赖 (Arduino 官方)`);
+            console.log(`[OK] ${lib.name}@${lib.version} -> shared dependency (Arduino official)`);
         } else if (lib.type === 'official-version-mismatch') {
             // Keep in plugin but warn
             result.kept.push(lib);
             result.warnings.push(
-                `⚠️ ${lib.name}@${lib.version} 版本在 Arduino 官方库中不存在，保留在插件内`
+                `[WARN] ${lib.name}@${lib.version} version not found in Arduino official library, kept in plugin`
             );
-            console.log(`⚠️ ${lib.name}@${lib.version} → 保留在插件内 (版本不匹配)`);
+            console.log(`[WARN] ${lib.name}@${lib.version} -> kept in plugin (version mismatch)`);
         } else if (lib.type === 'third-party') {
             // Keep in plugin
             result.kept.push(lib);
-            console.log(`📦 ${lib.name}@${lib.version} → 保留在插件内 (第三方库)`);
+            console.log(`[INFO] ${lib.name}@${lib.version} -> kept in plugin (third-party library)`);
         } else {
             // Private library
             result.kept.push(lib);
-            console.log(`📦 ${lib.name} → 保留在插件内 (私有库)`);
+            console.log(`[INFO] ${lib.name} -> kept in plugin (private library)`);
         }
     }
 

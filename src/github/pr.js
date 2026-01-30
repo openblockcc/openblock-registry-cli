@@ -1,6 +1,12 @@
 /**
  * GitHub Pull Request operations
  * Creates PRs to the OpenBlock Registry
+ *
+ * Registry structure (registry.json):
+ * {
+ *   "devices": ["https://github.com/owner/repo", ...],
+ *   "extensions": ["https://github.com/owner/repo", ...]
+ * }
  */
 
 const fetch = require('node-fetch');
@@ -11,6 +17,7 @@ const {generatePublishPRBody, generateUnpublishPRBody, generatePRTitle} = requir
 const REGISTRY_OWNER = 'openblockcc';
 const REGISTRY_REPO = 'openblock-registry';
 const REGISTRY_BRANCH = 'main';
+const REGISTRY_FILE = 'registry.json';
 
 /**
  * Ensure fork exists
@@ -66,6 +73,49 @@ const getLatestCommitSha = async function (token, owner, repo, branch) {
 };
 
 /**
+ * Check if branch exists
+ * @param {string} token - GitHub token
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @param {string} branch - Branch name
+ * @returns {boolean} True if branch exists
+ */
+const branchExists = async function (token, owner, repo, branch) {
+    const response = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${branch}`,
+        {
+            headers: {
+                'Authorization': `token ${token}`,
+                'Accept': 'application/vnd.github.v3+json',
+                'User-Agent': 'openblock-cli'
+            }
+        }
+    );
+    return response.status === 200;
+};
+
+/**
+ * Delete branch
+ * @param {string} token - GitHub token
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @param {string} branch - Branch name
+ */
+const deleteBranch = async function (token, owner, repo, branch) {
+    await fetch(
+        `https://api.github.com/repos/${owner}/${repo}/git/refs/heads/${branch}`,
+        {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `token ${token}`,
+                'Accept': 'application/vnd.github.v3+json',
+                'User-Agent': 'openblock-cli'
+            }
+        }
+    );
+};
+
+/**
  * Create branch
  * @param {string} token - GitHub token
  * @param {string} owner - Repository owner
@@ -90,70 +140,280 @@ const createBranch = async function (token, owner, repo, branch, sha) {
 };
 
 /**
- * Get packages.json
+ * Find existing open PR for a branch
+ * @param {string} token - GitHub token
+ * @param {string} username - GitHub username (fork owner)
+ * @param {string} branch - Branch name
+ * @returns {object|null} PR object if found, null otherwise
+ */
+const findExistingPR = async function (token, username, branch) {
+    const response = await fetch(
+        `https://api.github.com/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/pulls?state=open&head=${username}:${branch}`,
+        {
+            headers: {
+                'Authorization': `token ${token}`,
+                'Accept': 'application/vnd.github.v3+json',
+                'User-Agent': 'openblock-cli'
+            }
+        }
+    );
+    const prs = await response.json();
+    return Array.isArray(prs) && prs.length > 0 ? prs[0] : null;
+};
+
+/**
+ * Update existing PR body
+ * @param {string} token - GitHub token
+ * @param {number} prNumber - PR number
+ * @param {string} body - New PR body
+ * @returns {string} PR URL
+ */
+const updatePRBody = async function (token, prNumber, body) {
+    const response = await fetch(
+        `https://api.github.com/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/pulls/${prNumber}`,
+        {
+            method: 'PATCH',
+            headers: {
+                'Authorization': `token ${token}`,
+                'Accept': 'application/vnd.github.v3+json',
+                'User-Agent': 'openblock-cli',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({body})
+        }
+    );
+
+    if (!response.ok) {
+        const error = await response.json();
+        let errorDetails = error.message || response.status;
+        if (error.errors && error.errors.length > 0) {
+            errorDetails += `\n${error.errors.map(e => `  - ${e.message || JSON.stringify(e)}`).join('\n')}`;
+        }
+        throw new Error(`Failed to update PR: ${errorDetails}`);
+    }
+
+    const data = await response.json();
+    return data.html_url;
+};
+
+/**
+ * Get registry.json
  * @param {string} _token - GitHub token (unused)
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
  * @param {string} branch - Branch name
- * @returns {object} Packages JSON
+ * @returns {object} Registry JSON
  */
-const getPackagesJson = async function (_token, owner, repo, branch) {
+const getRegistryJson = async function (_token, owner, repo, branch) {
     const response = await fetch(
-        `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/packages.json`
+        `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${REGISTRY_FILE}`
     );
     return response.json();
 };
 
 /**
- * Update packages.json
- * @param {object} packagesJson - Current packages.json
- * @param {object} _packageInfo - Package information (unused)
- * @param {object} _gitInfo - Git information (unused)
- * @returns {object} Updated packages.json
+ * Update registry.json with new repository URL
+ * @param {object} registryJson - Current registry.json
+ * @param {string} repoUrl - GitHub repository URL
+ * @param {string} pluginType - Plugin type ('device' or 'extension')
+ * @returns {{registry: object, isNew: boolean}} Updated registry.json and whether it's a new entry
  */
-const updatePackagesJson = function (packagesJson, _packageInfo, _gitInfo) {
-    // Implementation to add/update package entry
-    // This is a simplified version
-    return packagesJson;
+const updateRegistryJson = function (registryJson, repoUrl, pluginType) {
+    const collectionName = pluginType === 'device' ? 'devices' : 'extensions';
+
+    // Ensure structure exists
+    if (!registryJson[collectionName]) {
+        registryJson[collectionName] = [];
+    }
+
+    const collection = registryJson[collectionName];
+
+    // Check if URL already exists
+    const exists = collection.includes(repoUrl);
+
+    if (!exists) {
+        // Add new URL
+        collection.push(repoUrl);
+        // Sort alphabetically
+        collection.sort();
+    }
+
+    return {
+        registry: registryJson,
+        isNew: !exists
+    };
 };
 
 /**
- * Remove from packages.json
- * @param {object} packagesJson - Current packages.json
- * @param {string} _packageId - Package ID (unused)
- * @param {string} _version - Version (unused)
- * @returns {object} Updated packages.json
+ * Remove repository URL from registry.json
+ * @param {object} registryJson - Current registry.json
+ * @param {string} repoUrl - GitHub repository URL to remove
+ * @returns {object} Updated registry.json
  */
-const removeFromPackagesJson = function (packagesJson, _packageId, _version) {
-    // Implementation to remove package version
-    return packagesJson;
+const removeFromRegistryJson = function (registryJson, repoUrl) {
+    // Search in both devices and extensions
+    for (const collectionName of ['devices', 'extensions']) {
+        const collection = registryJson[collectionName];
+        if (!collection) continue;
+
+        registryJson[collectionName] = collection.filter(url => url !== repoUrl);
+    }
+
+    return registryJson;
 };
 
 /**
- * Commit changes
- * @param {string} _token - GitHub token (unused)
- * @param {string} _owner - Repository owner (unused)
- * @param {string} _repo - Repository name (unused)
- * @param {string} _branch - Branch name (unused)
- * @param {object} _content - Content (unused)
- * @param {object} _packageInfo - Package information (unused)
+ * Get file SHA from repository
+ * @param {string} token - GitHub token
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @param {string} branch - Branch name
+ * @param {string} filePath - File path
+ * @returns {Promise<string|null>} File SHA or null if not found
  */
-const commitChanges = async function (_token, _owner, _repo, _branch, _content, _packageInfo) {
-    // Implementation to commit changes
+const getFileSha = async function (token, owner, repo, branch, filePath) {
+    const response = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`,
+        {
+            headers: {
+                'Authorization': `token ${token}`,
+                'Accept': 'application/vnd.github.v3+json',
+                'User-Agent': 'openblock-cli'
+            }
+        }
+    );
+
+    if (response.ok) {
+        const data = await response.json();
+        return data.sha;
+    }
+    return null;
 };
 
 /**
- * Commit unpublish changes
- * @param {string} _token - GitHub token (unused)
- * @param {string} _owner - Repository owner (unused)
- * @param {string} _repo - Repository name (unused)
- * @param {string} _branch - Branch name (unused)
- * @param {object} _content - Content (unused)
- * @param {string} _packageId - Package ID (unused)
- * @param {string} _version - Version (unused)
+ * Commit a file to repository
+ * @param {string} token - GitHub token
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @param {string} branch - Branch name
+ * @param {string} filePath - File path
+ * @param {string} content - File content (will be base64 encoded)
+ * @param {string} message - Commit message
+ * @param {string|null} sha - Existing file SHA (for updates)
  */
-const commitUnpublishChanges = async function (_token, _owner, _repo, _branch, _content, _packageId, _version) {
-    // Implementation to commit unpublish changes
+const commitFile = async function (token, owner, repo, branch, filePath, content, message, sha = null) {
+    const body = {
+        message,
+        content: Buffer.from(content).toString('base64'),
+        branch
+    };
+
+    if (sha) {
+        body.sha = sha;
+    }
+
+    const response = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`,
+        {
+            method: 'PUT',
+            headers: {
+                'Authorization': `token ${token}`,
+                'Accept': 'application/vnd.github.v3+json',
+                'User-Agent': 'openblock-cli',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body)
+        }
+    );
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(`Failed to commit file: ${error.message || response.status}`);
+    }
+
+    return response.json();
+};
+
+/**
+ * Commit changes to registry.json
+ * @param {string} token - GitHub token
+ * @param {string} owner - Repository owner (fork owner)
+ * @param {string} repo - Repository name
+ * @param {string} branch - Branch name
+ * @param {object} content - Updated registry.json content
+ * @param {string} repoUrl - Repository URL being added
+ */
+const commitRegistryChanges = async function (token, owner, repo, branch, content, repoUrl) {
+    const message = `feat: add ${repoUrl}`;
+
+    // Get existing file SHA
+    const sha = await getFileSha(token, owner, repo, branch, REGISTRY_FILE);
+
+    // Format JSON with 4-space indentation for readability
+    const jsonContent = JSON.stringify(content, null, 4);
+
+    // Commit the file
+    await commitFile(token, owner, repo, branch, REGISTRY_FILE, jsonContent, message, sha);
+};
+
+/**
+ * Commit unpublish changes to registry.json
+ * @param {string} token - GitHub token
+ * @param {string} owner - Repository owner (fork owner)
+ * @param {string} repo - Repository name
+ * @param {string} branch - Branch name
+ * @param {object} content - Updated registry.json content
+ * @param {string} repoUrl - Repository URL being removed
+ */
+const commitUnpublishChanges = async function (token, owner, repo, branch, content, repoUrl) {
+    const message = `feat: remove ${repoUrl}`;
+
+    // Get existing file SHA
+    const sha = await getFileSha(token, owner, repo, branch, REGISTRY_FILE);
+
+    // Format JSON with 4-space indentation for readability
+    const jsonContent = JSON.stringify(content, null, 4);
+
+    // Commit the file
+    await commitFile(token, owner, repo, branch, REGISTRY_FILE, jsonContent, message, sha);
+};
+
+/**
+ * Helper to normalize i18n field (string or formatMessage object)
+ * @param {string|object} value - Field value
+ * @returns {string} Normalized string value
+ */
+const normalizeI18n = value => {
+    if (typeof value === 'string') return value;
+    if (value && typeof value === 'object' && value.formatMessage) {
+        return value.formatMessage.default || value.formatMessage.id || '';
+    }
+    return '';
+};
+
+/**
+ * Build PR body content
+ * @param {object} packageInfo - Package information
+ * @param {string} repoUrl - GitHub repository URL
+ * @param {boolean} isNewPlugin - Whether this is a new plugin
+ * @returns {string} PR body markdown
+ */
+const buildPRBody = (packageInfo, repoUrl, isNewPlugin) => {
+    const openblock = packageInfo.openblock;
+    const pluginName = normalizeI18n(openblock.name) || openblock.id;
+    const description = normalizeI18n(openblock.description) || packageInfo.description || '';
+    const isDevice = !!openblock.deviceId;
+
+    return generatePublishPRBody({
+        pluginId: openblock.id,
+        pluginName,
+        pluginType: isDevice ? 'device' : 'extension',
+        version: packageInfo.version,
+        repository: repoUrl,
+        description,
+        author: packageInfo.author || '',
+        isNewPlugin: isNewPlugin
+    });
 };
 
 /**
@@ -162,25 +422,13 @@ const commitUnpublishChanges = async function (_token, _owner, _repo, _branch, _
  * @param {string} username - GitHub username
  * @param {string} branch - Branch name
  * @param {object} packageInfo - Package information
- * @param {object} repoInfo - Repository information
+ * @param {string} repoUrl - GitHub repository URL
  * @param {boolean} isNewPlugin - Whether this is a new plugin
  * @returns {string} PR URL
  */
-const createPR = async function (token, username, branch, packageInfo, repoInfo, isNewPlugin) {
-    const openblock = packageInfo.openblock;
-
-    const title = generatePRTitle('publish', openblock.id, packageInfo.version);
-    const body = generatePublishPRBody({
-        pluginId: openblock.id,
-        pluginName: openblock.name || openblock.id,
-        pluginType: openblock.type,
-        version: packageInfo.version,
-        repository: repoInfo ? repoInfo.html_url : packageInfo.repository.url,
-        description: openblock.description || packageInfo.description || '',
-        author: packageInfo.author || '',
-        dependencies: packageInfo.dependencies,
-        isNewPlugin: isNewPlugin
-    });
+const createPR = async function (token, username, branch, packageInfo, repoUrl, isNewPlugin) {
+    const title = generatePRTitle('publish', packageInfo.openblock.id, packageInfo.version);
+    const body = buildPRBody(packageInfo, repoUrl, isNewPlugin);
 
     const response = await fetch(
         `https://api.github.com/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/pulls`,
@@ -203,7 +451,12 @@ const createPR = async function (token, username, branch, packageInfo, repoInfo,
 
     if (!response.ok) {
         const error = await response.json();
-        throw new Error(`Failed to create PR: ${error.message || response.status}`);
+        // Show detailed error information from GitHub API
+        let errorDetails = error.message || response.status;
+        if (error.errors && error.errors.length > 0) {
+            errorDetails += `\n${error.errors.map(e => `  - ${e.message || JSON.stringify(e)}`).join('\n')}`;
+        }
+        throw new Error(`Failed to create PR: ${errorDetails}`);
     }
 
     const data = await response.json();
@@ -215,18 +468,18 @@ const createPR = async function (token, username, branch, packageInfo, repoInfo,
  * @param {string} token - GitHub token
  * @param {string} username - GitHub username
  * @param {string} branch - Branch name
- * @param {string} packageId - Package ID
- * @param {string} version - Version
- * @param {string} reason - Reason for unpublishing
+ * @param {string} repoUrl - GitHub repository URL to remove
  * @returns {string} PR URL
  */
-const createUnpublishPRRequest = async function (token, username, branch, packageId, version, reason) {
-    const title = generatePRTitle('unpublish', packageId, version);
+const createUnpublishPRRequest = async function (token, username, branch, repoUrl) {
+    // Extract repo name from URL for title
+    const repoName = repoUrl.split('/').pop();
+    const title = `Remove: ${repoName}`;
     const body = generateUnpublishPRBody({
-        pluginId: packageId,
-        pluginName: packageId,
-        version: version,
-        reason: reason || 'No reason provided'
+        pluginId: repoName,
+        pluginName: repoName,
+        version: 'all',
+        reason: `Remove repository: ${repoUrl}`
     });
 
     const response = await fetch(
@@ -250,7 +503,12 @@ const createUnpublishPRRequest = async function (token, username, branch, packag
 
     if (!response.ok) {
         const error = await response.json();
-        throw new Error(`Failed to create PR: ${error.message || response.status}`);
+        // Show detailed error information from GitHub API
+        let errorDetails = error.message || response.status;
+        if (error.errors && error.errors.length > 0) {
+            errorDetails += `\n${error.errors.map(e => `  - ${e.message || JSON.stringify(e)}`).join('\n')}`;
+        }
+        throw new Error(`Failed to create PR: ${errorDetails}`);
     }
 
     const data = await response.json();
@@ -258,68 +516,101 @@ const createUnpublishPRRequest = async function (token, username, branch, packag
 };
 
 /**
- * Create a Pull Request to add/update a package
+ * Create a Pull Request to add a plugin repository to registry
  * @param {string} token - GitHub token
  * @param {object} packageInfo - Package information from package.json
- * @param {object} gitInfo - Git information
- * @param {object} repoInfo - Repository information from GitHub API
- * @param {object} idCheckResult - ID uniqueness check result (contains packagesJson and isNew)
- * @returns {string} PR URL
+ * @param {string} repoUrl - GitHub repository URL (validated)
+ * @returns {{url: string, isUpdate: boolean, isNew: boolean}} PR result
  */
-const createPullRequest = async function (token, packageInfo, gitInfo, repoInfo, idCheckResult) {
+const createPullRequest = async function (token, packageInfo, repoUrl) {
+    const openblock = packageInfo.openblock;
+    const pluginId = openblock.id || openblock.deviceId || openblock.extensionId;
+    const pluginType = openblock.deviceId ? 'device' : 'extension';
 
     // Get authenticated user
     const user = await getAuthenticatedUser(token);
-    const branchName = `publish/${packageInfo.openblock.id}-${packageInfo.version}`;
+    const branchName = `publish/${pluginId}`;
 
     // 1. Fork the registry (if not already forked)
     await ensureFork(token, user.login);
 
-    // 2. Get the latest commit SHA from main branch
+    // 2. Check if there's an existing open PR for this branch
+    const existingPR = await findExistingPR(token, user.login, branchName);
+
+    // 3. Check if branch exists
+    const branchAlreadyExists = await branchExists(token, user.login, REGISTRY_REPO, branchName);
+
+    // 4. Get the latest commit SHA from main branch
     const baseSha = await getLatestCommitSha(token, REGISTRY_OWNER, REGISTRY_REPO, REGISTRY_BRANCH);
 
-    // 3. Create a new branch in the fork
-    await createBranch(token, user.login, REGISTRY_REPO, branchName, baseSha);
+    // 5. Handle branch creation/recreation
+    if (branchAlreadyExists) {
+        if (existingPR) {
+            // If there's an existing open PR, DON'T delete the branch (it would close the PR)
+            // Just update the branch content by committing new changes
+        } else {
+            // No open PR, safe to delete and recreate branch
+            await deleteBranch(token, user.login, REGISTRY_REPO, branchName);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            await createBranch(token, user.login, REGISTRY_REPO, branchName, baseSha);
+        }
+    } else {
+        // Branch doesn't exist, create it
+        await createBranch(token, user.login, REGISTRY_REPO, branchName, baseSha);
+    }
 
-    // 4. Use packagesJson from idCheckResult (already fetched during validation)
-    const packagesJson = idCheckResult.packagesJson;
+    // 6. Get current registry.json
+    const registryJson = await getRegistryJson(token, REGISTRY_OWNER, REGISTRY_REPO, REGISTRY_BRANCH);
 
-    // 5. Update packages.json with new entry
-    const updatedPackages = updatePackagesJson(packagesJson, packageInfo, gitInfo);
+    // 7. Update registry.json with repository URL
+    const {registry: updatedRegistry, isNew} = updateRegistryJson(registryJson, repoUrl, pluginType);
 
-    // 6. Commit the changes
-    await commitChanges(token, user.login, REGISTRY_REPO, branchName, updatedPackages, packageInfo);
+    // 8. Commit the changes
+    await commitRegistryChanges(token, user.login, REGISTRY_REPO, branchName, updatedRegistry, repoUrl);
 
-    // 7. Create Pull Request (pass isNew from idCheckResult)
-    const prUrl = await createPR(
-        token, user.login, branchName, packageInfo, repoInfo, idCheckResult.isNew
-    );
+    // 9. Create or update Pull Request
+    let prUrl;
+    if (existingPR) {
+        // Update existing PR body with new information
+        const body = buildPRBody(packageInfo, repoUrl, isNew);
+        prUrl = await updatePRBody(token, existingPR.number, body);
+    } else {
+        // Create new Pull Request
+        prUrl = await createPR(
+            token, user.login, branchName, packageInfo, repoUrl, isNew
+        );
+    }
 
-    return prUrl;
+    return {url: prUrl, isUpdate: !!existingPR, isNew};
 };
 
 /**
- * Create a Pull Request to remove a package version
+ * Create a Pull Request to remove a plugin repository from registry
  * @param {string} token - GitHub token
- * @param {string} packageId - Package ID
- * @param {string} version - Version to remove
+ * @param {string} repoUrl - GitHub repository URL to remove
  * @returns {string} PR URL
  */
-const createUnpublishPR = async function (token, packageId, version) {
+const createUnpublishPR = async function (token, repoUrl) {
     const user = await getAuthenticatedUser(token);
-    const branchName = `unpublish/${packageId}-${version}`;
 
-    // Similar flow as createPullRequest but removes the version
+    // Extract repo name from URL for branch name
+    const repoName = repoUrl.split('/').pop();
+    const branchName = `unpublish/${repoName}`;
+
+    // Fork, create branch
     await ensureFork(token, user.login);
     const baseSha = await getLatestCommitSha(token, REGISTRY_OWNER, REGISTRY_REPO, REGISTRY_BRANCH);
     await createBranch(token, user.login, REGISTRY_REPO, branchName, baseSha);
 
-    const packagesJson = await getPackagesJson(null, REGISTRY_OWNER, REGISTRY_REPO, REGISTRY_BRANCH);
-    const updatedPackages = removeFromPackagesJson(packagesJson, packageId, version);
+    // Get and update registry.json
+    const registryJson = await getRegistryJson(token, REGISTRY_OWNER, REGISTRY_REPO, REGISTRY_BRANCH);
+    const updatedRegistry = removeFromRegistryJson(registryJson, repoUrl);
 
-    await commitUnpublishChanges(null, user.login, REGISTRY_REPO, branchName, updatedPackages, packageId, version);
+    // Commit changes
+    await commitUnpublishChanges(token, user.login, REGISTRY_REPO, branchName, updatedRegistry, repoUrl);
 
-    const prUrl = await createUnpublishPRRequest(null, user.login, branchName, packageId, version);
+    // Create PR
+    const prUrl = await createUnpublishPRRequest(token, user.login, branchName, repoUrl);
 
     return prUrl;
 };

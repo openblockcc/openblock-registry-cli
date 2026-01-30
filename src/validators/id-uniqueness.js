@@ -62,49 +62,70 @@ const normalizeRepoUrl = function (repository) {
  */
 const validateIdUniqueness = async function (packageInfo, repoInfo) {
     const openblock = packageInfo.openblock;
-    const pluginType = openblock.type;
+    const pluginType = openblock.pluginType; // 'device' or 'extension'
     const pluginId = openblock.id;
+    const idField = pluginType === 'device' ? 'deviceId' : 'extensionId';
 
     // Fetch current packages.json
     const packagesJson = await fetchPackagesJson();
 
-    // Check if plugin type category exists
-    if (!packagesJson[pluginType]) {
-        return {
-            isNew: true,
-            existingPlugin: null,
-            packagesJson: packagesJson
-        };
-    }
+    // Check ID uniqueness across ALL plugin types (devices and extensions)
+    // Device IDs and Extension IDs must be globally unique
+    const typesToCheck = ['device', 'extension'];
 
-    // Check if plugin ID exists
-    const existingPlugin = packagesJson[pluginType][pluginId];
-    if (!existingPlugin) {
-        return {
-            isNew: true,
-            existingPlugin: null,
-            packagesJson: packagesJson
-        };
-    }
+    for (const typeToCheck of typesToCheck) {
+        const pluralType = typeToCheck === 'device' ? 'devices' : 'extensions';
 
-    // Plugin exists - check if it's from the same repository
-    const currentRepoId = normalizeRepoUrl(repoInfo.html_url || packageInfo.repository);
-    const existingRepoId = normalizeRepoUrl(existingPlugin.repository);
+        if (!packagesJson[pluralType]) {
+            continue;
+        }
 
-    if (currentRepoId && existingRepoId && currentRepoId !== existingRepoId) {
-        // ID conflict - different repository trying to use same ID
+        const existingPlugin = packagesJson[pluralType][pluginId];
+        if (!existingPlugin) {
+            continue;
+        }
+
+        // Found a plugin with the same ID
+        const currentRepoId = normalizeRepoUrl(repoInfo.html_url || packageInfo.repository);
+        const existingRepoId = normalizeRepoUrl(existingPlugin.repository);
+
+        if (currentRepoId && existingRepoId && currentRepoId !== existingRepoId) {
+            // ID conflict - different repository trying to use same ID
+            const existingTypeLabel = typeToCheck === 'device' ? 'device' : 'extension';
+            throw new Error(
+                `Plugin ID "${pluginId}" is already used by another repository's ${existingTypeLabel}.\n` +
+                `   Existing repository: ${existingPlugin.repository}\n` +
+                `   Your repository: ${repoInfo.html_url || packageInfo.repository.url}\n` +
+                `   Please use a different openblock.${idField}\n` +
+                `   Note: Device IDs and Extension IDs must be globally unique`
+            );
+        }
+
+        // Same repository - this is an update
+        if (typeToCheck === pluginType) {
+            return {
+                isNew: false,
+                existingPlugin: existingPlugin,
+                packagesJson: packagesJson
+            };
+        }
+        // Same repo but different type - this is not allowed
+        const existingTypeLabel = typeToCheck === 'device' ? 'device' : 'extension';
+        const currentTypeLabel = pluginType === 'device' ? 'device' : 'extension';
         throw new Error(
-            `插件 ID "${pluginId}" 已被其他仓库占用。\n` +
-            `   现有仓库: ${existingPlugin.repository}\n` +
-            `   您的仓库: ${repoInfo.html_url || packageInfo.repository.url}\n` +
-            `   请使用不同的 openblock.id`
+            `Plugin ID "${pluginId}" is already used as a ${existingTypeLabel} in your repository.\n` +
+                `   Cannot use the same ID for different plugin types.\n` +
+                `   Existing type: ${existingTypeLabel}\n` +
+                `   Current type: ${currentTypeLabel}\n` +
+                `   Please use a different openblock.${idField}`
         );
+
     }
 
-    // Same repository - this is an update
+    // ID is new - no conflicts found
     return {
-        isNew: false,
-        existingPlugin: existingPlugin,
+        isNew: true,
+        existingPlugin: null,
         packagesJson: packagesJson
     };
 };

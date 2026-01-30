@@ -7,6 +7,8 @@ const fs = require('fs');
 const path = require('path');
 const {shouldIgnore} = require('./build-ignore');
 const {processPackageJsonImages, IMAGE_URL_FIELDS} = require('./image-processor');
+const {injectInterfaceTranslations} = require('./translations-processor');
+const {processPackageJsonForBuild} = require('../package-json-processor');
 
 /**
  * Copy a single file to destination, creating directories if needed
@@ -22,7 +24,7 @@ const copySingleFile = (srcPath, destPath) => {
 };
 
 /**
- * Process and copy package.json with base64 images
+ * Process and copy package.json with base64 images and field filtering
  * @param {string} projectDir - Project directory
  * @param {string} srcPath - Source package.json path
  * @param {string} destPath - Destination package.json path
@@ -36,9 +38,12 @@ const processAndCopyPackageJson = async (projectDir, srcPath, destPath) => {
     };
 
     try {
-        const packageJson = JSON.parse(fs.readFileSync(srcPath, 'utf-8'));
+        let packageJson = JSON.parse(fs.readFileSync(srcPath, 'utf-8'));
 
-        // Check if there are image fields to process
+        // Step 1: Inject interface translations from translations.js into l10n field
+        packageJson = injectInterfaceTranslations(projectDir, packageJson);
+
+        // Step 2: Check if there are image fields to process
         const openblock = packageJson.openblock || {};
         const hasImageFields = IMAGE_URL_FIELDS.some(field => {
             const value = openblock[field];
@@ -48,23 +53,24 @@ const processAndCopyPackageJson = async (projectDir, srcPath, destPath) => {
                 !value.startsWith('https://');
         });
 
-        if (!hasImageFields) {
-            // No local images to process, just copy
-            copySingleFile(srcPath, destPath);
-            return result;
-        }
+        let processedJson = packageJson;
 
-        // Process images and convert to base64
-        const processedJson = await processPackageJsonImages(projectDir, packageJson);
+        // Step 3: Process images and convert to base64 if needed
+        if (hasImageFields) {
+            processedJson = await processPackageJsonImages(projectDir, packageJson);
 
-        // Track which fields were converted
-        for (const field of IMAGE_URL_FIELDS) {
-            if (openblock[field] && processedJson.openblock[field] !== openblock[field]) {
-                result.converted.push(field);
+            // Track which fields were converted
+            for (const field of IMAGE_URL_FIELDS) {
+                if (openblock[field] && processedJson.openblock[field] !== openblock[field]) {
+                    result.converted.push(field);
+                }
             }
         }
 
-        // Write processed package.json
+        // Step 4: Filter package.json fields using whitelist
+        processedJson = processPackageJsonForBuild(processedJson);
+
+        // Step 5: Write processed package.json
         const destDir = path.dirname(destPath);
         if (!fs.existsSync(destDir)) {
             fs.mkdirSync(destDir, {recursive: true});

@@ -11,15 +11,14 @@ const REQUIRED_FILES = [
     {name: 'README.md', description: 'README documentation'}
 ];
 
-const ICON_FILES = ['icon.png', 'icon.svg', 'icon.jpg'];
-
 /**
  * Validate required files exist
+ * @param {string} dir - Directory to validate (defaults to current directory)
  * @returns {object} Validation results
  * @throws {Error} If required files are missing
  */
-const validateRequiredFiles = async function () {
-    const cwd = process.cwd();
+const validateRequiredFiles = async function (dir = process.cwd()) {
+    const cwd = dir;
     const results = {
         files: [],
         icon: null
@@ -39,41 +38,44 @@ const validateRequiredFiles = async function () {
         });
     }
 
-    // Check for icon file
+    // Check for icon - must be base64 data URI in package.json
+    const packageJsonPath = path.join(cwd, 'package.json');
     let iconFound = false;
-    for (const iconName of ICON_FILES) {
-        const iconPath = path.join(cwd, iconName);
-        if (fs.existsSync(iconPath)) {
-            iconFound = true;
-            const stats = fs.statSync(iconPath);
-            results.icon = {
-                name: iconName,
-                size: stats.size
-            };
 
-            // Validate icon size (should be reasonable)
-            if (stats.size > 1024 * 1024) {
-                console.warn(`Warning: Icon file ${iconName} is larger than 1MB`);
+    if (fs.existsSync(packageJsonPath)) {
+        const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+
+        // Check if iconURL is a base64 data URI
+        if (packageJson.openblock && packageJson.openblock.iconURL) {
+            const iconURL = packageJson.openblock.iconURL;
+
+            // Icon must be a base64 data URI
+            if (iconURL.startsWith('data:image/')) {
+                iconFound = true;
+                results.icon = {
+                    name: 'base64 data URI',
+                    size: iconURL.length
+                };
+
+                // Validate base64 size (should be reasonable, ~100KB for base64)
+                if (iconURL.length > 150 * 1024) {
+                    console.warn(`Warning: Icon base64 data URI is larger than 150KB`);
+                }
+            } else {
+                throw new Error(
+                    `${'package.json: openblock.iconURL must be a base64 data URI.\n' +
+                    '   Expected format: "data:image/png;base64,iVBORw0KG..."\n' +
+                    '   Found: "'}${iconURL.substring(0, 50)}..."`
+                );
             }
-
-            break;
         }
     }
 
     if (!iconFound) {
-        throw new Error(`Icon file missing. Please add one of: ${ICON_FILES.join(', ')}`);
-    }
-
-    // Check package.json openblock.iconURL matches
-    const packageJsonPath = path.join(cwd, 'package.json');
-    if (fs.existsSync(packageJsonPath)) {
-        const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-        if (packageJson.openblock && packageJson.openblock.iconURL) {
-            const declaredIcon = packageJson.openblock.iconURL.replace('./', '');
-            if (!fs.existsSync(path.join(cwd, declaredIcon))) {
-                throw new Error(`Icon file declared in openblock.iconURL not found: ${declaredIcon}`);
-            }
-        }
+        throw new Error(
+            'package.json: openblock.iconURL is required and must be a base64 data URI.\n' +
+            '   Expected format: "data:image/png;base64,iVBORw0KG..."'
+        );
     }
 
     return results;

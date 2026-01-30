@@ -18,7 +18,7 @@ const logger = require('../utils/logger');
  * @param {string} version - Version to unpublish
  */
 const unpublish = async function (version) {
-    console.log(chalk.cyan('\n🗑️  OpenBlock Plugin Unpublish\n'));
+    console.log(chalk.cyan('\nOpenBlock Plugin Unpublish\n'));
 
     const spinner = ora();
 
@@ -65,7 +65,7 @@ const unpublish = async function (version) {
         const prUrl = await createUnpublishPR(token, openblock.id, targetVersion);
         spinner.succeed('Unpublish PR created');
 
-        console.log(chalk.green('\n✅ Unpublish request submitted!\n'));
+        console.log(chalk.green('\n[OK] Unpublish request submitted!\n'));
         console.log(`   A PR has been created to remove version ${targetVersion}.`);
         console.log(`   Wait for maintainer review and approval.\n`);
         console.log(`   ${chalk.cyan('View PR:')} ${prUrl}\n`);

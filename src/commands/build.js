@@ -121,7 +121,7 @@ const build = async function (options = {}) {
         if (!imageResult.success) {
             spinner.fail('Failed to process images');
             imageResult.errors.forEach(err => {
-                console.error(chalk.red(`  ✖ ${err}`));
+                console.error(chalk.red(`  [ERROR] ${err}`));
             });
             process.exit(1);
         }

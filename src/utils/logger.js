@@ -83,7 +83,7 @@ const error = function (err) {
  * @param {...any} args - Arguments to log
  */
 const success = function (...args) {
-    console.log(chalk.green('✓'), ...args);
+    console.log(chalk.green('[OK]'), ...args);
 };
 
 /**
@@ -91,7 +91,7 @@ const success = function (...args) {
  * @param {...any} args - Arguments to log
  */
 const fail = function (...args) {
-    console.log(chalk.red('✗'), ...args);
+    console.log(chalk.red('[FAIL]'), ...args);
 };
 
 module.exports = {

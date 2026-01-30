@@ -52,12 +52,12 @@ const config = async (action, key, value) => {
                 process.exit(1);
             }
             setConfig(key, value);
-            console.log(chalk.green(`✅ ${key} has been set`));
+            console.log(chalk.green(`[OK] ${key} has been set`));
             break;
         }
 
         case 'list': {
-            console.log(chalk.cyan('\n📋 Current Configuration\n'));
+            console.log(chalk.cyan('\nCurrent Configuration\n'));
             const allConfig = listConfig();
             if (Object.keys(allConfig).length === 0) {
                 console.log('   (no configuration set)');

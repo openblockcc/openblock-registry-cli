@@ -12,8 +12,6 @@ const {execSync} = require('child_process');
  * @throws {Error} If validation fails
  */
 const validateGitStatus = async function (version) {
-    const tagName = `v${version}`;
-
     // Check if in a git repository
     try {
         execSync('git rev-parse --git-dir', {stdio: 'pipe'});
@@ -35,6 +33,7 @@ const validateGitStatus = async function (version) {
     }
 
     // Check if tag exists locally
+    const tagName = version;
     try {
         execSync(`git rev-parse ${tagName}`, {stdio: 'pipe'});
     } catch (e) {

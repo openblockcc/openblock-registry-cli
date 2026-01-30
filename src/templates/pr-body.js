@@ -13,7 +13,6 @@
  * @param {string} options.repository - GitHub repository URL
  * @param {string} options.description - Plugin description
  * @param {string} options.author - Author name
- * @param {object} options.dependencies - Dependencies object
  * @param {boolean} options.isNewPlugin - Whether this is a new plugin
  * @returns {string} PR body markdown
  */
@@ -26,51 +25,28 @@ const generatePublishPRBody = options => {
         repository,
         description,
         author,
-        dependencies,
         isNewPlugin
     } = options;
 
     const actionText = isNewPlugin ? 'Publish New Plugin' : 'Publish New Version';
     const typeLabel = pluginType === 'device' ? 'Device' : 'Extension';
 
-    let body = `## ${actionText}: ${pluginName}
+    // Build basic info rows (same for both device and extension)
+    const basicInfoRows = `| **Plugin ID** | \`${pluginId}\` |
+| **Name** | ${pluginName} |
+| **Type** | ${typeLabel} |
+| **Version** | \`${version}\` |
+| **Author** | ${author || '-'} |
+| **Description** | ${description || '-'} |
+| **Repository** | ${repository} |`;
+
+    const body = `## ${actionText}: ${pluginName}
 
 ### Basic Information
 
 | Field | Value |
 |------|-----|
-| **Plugin ID** | \`${pluginId}\` |
-| **Type** | ${typeLabel} |
-| **Version** | \`${version}\` |
-| **Author** | ${author} |
-| **Repository** | ${repository} |
-
-### Description
-
-${description || 'No description'}
-
-`;
-
-    // Add dependencies section if any
-    if (dependencies && dependencies.libraries && Object.keys(dependencies.libraries).length > 0) {
-        body += `### Dependencies
-
-| Library Name | Version |
-|--------|------|
-`;
-        for (const [libName, libVersion] of Object.entries(dependencies.libraries)) {
-            body += `| ${libName} | ${libVersion} |\n`;
-        }
-        body += '\n';
-    }
-
-    body += `### Checklist
-
-- [ ] package.json format is correct
-- [ ] Git tag \`v${version}\` exists and has been pushed
-- [ ] Repository is a public GitHub repository
-- [ ] Contains required files (LICENSE, README, icon)
-- [ ] Plugin ID is unique
+${basicInfoRows}
 
 ---
 

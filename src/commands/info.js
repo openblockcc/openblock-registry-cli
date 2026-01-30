@@ -19,7 +19,7 @@ const REGISTRY_URL = 'https://registry.openblock.cc/packages.json';
  * @param {boolean} options.all - Show all versions
  */
 const info = async function (options = {}) {
-    console.log(chalk.cyan('\n📦 OpenBlock Plugin Info\n'));
+    console.log(chalk.cyan('\nOpenBlock Plugin Info\n'));
 
     const spinner = ora();
 
@@ -57,19 +57,19 @@ const info = async function (options = {}) {
         const pkg = packages.find(p => p.id === openblock.id);
 
         if (!pkg) {
-            console.log(chalk.yellow('\n⚠️  Package not found in registry'));
+            console.log(chalk.yellow('\n[WARN] Package not found in registry'));
             console.log(`   This package has not been published yet.\n`);
             return;
         }
 
         // Display versions
-        console.log(chalk.green(`\n✅ Found in registry: ${pkg.name}\n`));
+        console.log(chalk.green(`\n[OK] Found in registry: ${pkg.name}\n`));
         console.log(`   ${chalk.bold('Published versions:')}`);
 
         const versions = options.all ? pkg.versions : pkg.versions.slice(0, 5);
         versions.forEach(v => {
             const isCurrent = v.version === packageJson.version;
-            const marker = isCurrent ? chalk.green(' ← current') : '';
+            const marker = isCurrent ? chalk.green(' (current)') : '';
             console.log(`   - ${v.version} (${v.releaseDate})${marker}`);
         });
 

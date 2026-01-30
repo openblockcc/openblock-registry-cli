@@ -7,8 +7,8 @@ const fs = require('fs');
 const path = require('path');
 const semver = require('semver');
 
-const REQUIRED_OPENBLOCK_FIELDS = ['id', 'type', 'name'];
-const VALID_TYPES = ['device', 'extension'];
+const REQUIRED_OPENBLOCK_FIELDS = ['name'];
+const VALID_DEVICE_TYPES = ['arduino', 'micropython', 'microbit'];
 
 /**
  * Normalize GitHub URL to https format
@@ -33,12 +33,13 @@ const normalizeGitHubUrl = function (url) {
 };
 
 /**
- * Validate package.json in current directory
+ * Validate package.json in specified directory
+ * @param {string} dir - Directory to validate (defaults to current directory)
  * @returns {object} Parsed and validated package.json
  * @throws {Error} If validation fails
  */
-const validatePackageJson = async function () {
-    const packageJsonPath = path.join(process.cwd(), 'package.json');
+const validatePackageJson = async function (dir = process.cwd()) {
+    const packageJsonPath = path.join(dir, 'package.json');
 
     // Check file exists
     if (!fs.existsSync(packageJsonPath)) {
@@ -66,6 +67,7 @@ const validatePackageJson = async function () {
         throw new Error(`package.json: invalid version "${packageJson.version}". Must be valid semver.`);
     }
 
+    // Validate repository field
     if (!packageJson.repository) {
         throw new Error('package.json: "repository" field is required');
     }
@@ -84,6 +86,12 @@ const validatePackageJson = async function () {
         throw new Error('package.json: repository must be a GitHub URL');
     }
 
+    // Normalize repository URL
+    packageJson.repository = {
+        type: 'git',
+        url: normalizeGitHubUrl(repoUrl)
+    };
+
     // Validate openblock field
     if (!packageJson.openblock) {
         throw new Error('package.json: "openblock" field is required');
@@ -98,21 +106,67 @@ const validatePackageJson = async function () {
         }
     }
 
-    // Validate type
-    if (!VALID_TYPES.includes(openblock.type)) {
-        throw new Error(`package.json: openblock.type must be one of: ${VALID_TYPES.join(', ')}`);
+    // Determine plugin type by checking which ID field exists
+    // A plugin can only be either a device OR an extension, not both
+    let pluginType = null;
+    let idField = null;
+
+    const hasDeviceId = !!openblock.deviceId;
+    const hasExtensionId = !!openblock.extensionId;
+
+    // Check for conflicting IDs
+    if (hasDeviceId && hasExtensionId) {
+        throw new Error(
+            'package.json: cannot have both openblock.deviceId and openblock.extensionId.\n' +
+            '   A plugin must be either a device OR an extension, not both.'
+        );
+    }
+
+    // Determine plugin type
+    if (hasDeviceId) {
+        pluginType = 'device';
+        idField = 'deviceId';
+    } else if (hasExtensionId) {
+        pluginType = 'extension';
+        idField = 'extensionId';
+    } else {
+        throw new Error(
+            'package.json: either openblock.deviceId (for device) or ' +
+            'openblock.extensionId (for extension) is required'
+        );
     }
 
     // Validate id format (camelCase, no special characters)
-    if (!/^[a-zA-Z][a-zA-Z0-9]*$/.test(openblock.id)) {
-        throw new Error('package.json: openblock.id must start with a letter and contain only alphanumeric characters');
+    if (!/^[a-zA-Z][a-zA-Z0-9]*$/.test(openblock[idField])) {
+        throw new Error(
+            `package.json: openblock.${idField} must start with a letter and ` +
+            `contain only alphanumeric characters`
+        );
     }
 
-    // Normalize repository URL
-    packageJson.repository = {
-        type: 'git',
-        url: normalizeGitHubUrl(repoUrl)
-    };
+    // For devices, validate the type field
+    if (pluginType === 'device') {
+        if (!openblock.type) {
+            throw new Error('package.json: openblock.type is required for device plugins');
+        }
+        if (!VALID_DEVICE_TYPES.includes(openblock.type)) {
+            throw new Error(
+                `package.json: openblock.type must be one of: ${VALID_DEVICE_TYPES.join(', ')} ` +
+                `for device plugins`
+            );
+        }
+    }
+
+    // For extensions, type field should not exist (or warn if it does)
+    if (pluginType === 'extension' && openblock.type) {
+        console.warn(
+            'Warning: openblock.type field is not used for extension plugins and will be ignored'
+        );
+    }
+
+    // Normalize: add 'id' and 'pluginType' fields for backward compatibility
+    openblock.id = openblock[idField];
+    openblock.pluginType = pluginType;
 
     return packageJson;
 };

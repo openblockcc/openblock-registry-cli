@@ -4,6 +4,39 @@
  */
 
 /**
+ * Convert iconURL to GitHub raw URL
+ * @param {string} iconURL - Icon URL from package.json (can be relative path or data URI)
+ * @param {string} repository - GitHub repository URL
+ * @param {string} version - Plugin version (used as git tag)
+ * @returns {string|null} GitHub raw URL or null if not applicable
+ */
+const convertIconURLToGitHubRaw = (iconURL, repository, version) => {
+    // If it's already a data URI, return null (will be handled separately)
+    if (!iconURL || iconURL.startsWith('data:')) {
+        return null;
+    }
+
+    // If it's already an absolute URL, return as is
+    if (iconURL.startsWith('http://') || iconURL.startsWith('https://')) {
+        return iconURL;
+    }
+
+    // Extract owner/repo from repository URL
+    const match = repository.match(/github\.com[/:]([^/]+)\/([^/.]+)/);
+    if (!match) {
+        return null;
+    }
+
+    const [, owner, repo] = match;
+
+    // Remove leading ./ or ../
+    const cleanPath = iconURL.replace(/^\.\//, '').replace(/^\.\.\//, '');
+
+    // Construct GitHub raw URL using the version tag
+    return `https://raw.githubusercontent.com/${owner}/${repo}/${version}/${cleanPath}`;
+};
+
+/**
  * Generate PR body for publishing a new plugin or version
  * @param {object} options - PR options
  * @param {string} options.pluginId - Plugin ID
@@ -13,6 +46,7 @@
  * @param {string} options.repository - GitHub repository URL
  * @param {string} options.description - Plugin description
  * @param {string} options.author - Author name
+ * @param {string} [options.iconURL] - Icon URL from package.json
  * @param {boolean} options.isNewPlugin - Whether this is a new plugin
  * @returns {string} PR body markdown
  */
@@ -25,11 +59,27 @@ const generatePublishPRBody = options => {
         repository,
         description,
         author,
+        iconURL,
         isNewPlugin
     } = options;
 
     const actionText = isNewPlugin ? 'Publish New Plugin' : 'Publish New Version';
     const typeLabel = pluginType === 'device' ? 'Device' : 'Extension';
+
+    // Convert iconURL to GitHub raw URL if applicable
+    const displayIconURL = convertIconURLToGitHubRaw(iconURL, repository, version);
+
+    // Build icon section
+    let iconSection = '';
+    if (displayIconURL) {
+        iconSection = `### Plugin Icon
+
+<kbd>
+  <img src="${displayIconURL}" alt="${pluginName}" width="100" />
+</kbd>
+
+`;
+    }
 
     // Build basic info rows (same for both device and extension)
     const basicInfoRows = `| **Plugin ID** | \`${pluginId}\` |
@@ -42,7 +92,7 @@ const generatePublishPRBody = options => {
 
     const body = `## ${actionText}: ${pluginName}
 
-### Basic Information
+${iconSection}### Basic Information
 
 | Field | Value |
 |------|-----|

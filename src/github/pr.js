@@ -412,6 +412,7 @@ const buildPRBody = (packageInfo, repoUrl, isNewPlugin) => {
         repository: repoUrl,
         description,
         author: packageInfo.author || '',
+        iconURL: openblock.iconURL || '',
         isNewPlugin: isNewPlugin
     });
 };

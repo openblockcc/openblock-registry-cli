@@ -11,6 +11,8 @@ const validateGitStatus = require('../validators/git-status');
 const validateRequiredFiles = require('../validators/required-files');
 const validateRemoteRepo = require('../validators/remote-repo');
 const {validateIdUniqueness} = require('../validators/id-uniqueness');
+const validatePackageStructure = require('../validators/package-structure');
+const validateTranslations = require('../validators/translations');
 const logger = require('../utils/logger');
 
 // GitHub URL pattern: https://github.com/owner/repo
@@ -95,6 +97,32 @@ const validate = async function (options = {}) {
         } else {
             spinner.succeed(`Plugin ID ${chalk.green(packageInfo.openblock.id)} exists (updating)`);
         }
+
+        // 7. Validate package.json structure
+        spinner.start('Validating package.json structure...');
+        const structureResult = validatePackageStructure(packageInfo);
+        if (!structureResult.valid) {
+            spinner.fail('Package.json structure validation failed');
+            console.log(chalk.red('\nStructure validation errors:'));
+            structureResult.errors.forEach(error => {
+                console.log(chalk.red(`   ✗ ${error}`));
+            });
+            throw new Error('Package.json structure validation failed');
+        }
+        spinner.succeed('Package.json structure validated');
+
+        // 8. Validate translations
+        spinner.start('Validating translations...');
+        const translationsResult = validateTranslations(packageInfo);
+        if (!translationsResult.valid) {
+            spinner.fail('Translations validation failed');
+            console.log(chalk.red('\nTranslations validation errors:'));
+            translationsResult.errors.forEach(error => {
+                console.log(chalk.red(`   ✗ ${error}`));
+            });
+            throw new Error('Translations validation failed');
+        }
+        spinner.succeed('Translations validated');
 
         // Summary
         if (!options.silent) {

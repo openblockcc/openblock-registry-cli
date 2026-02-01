@@ -1,0 +1,9 @@
+# Development files
+.eslintrc.js
+/.editorconfig
+/.eslintignore
+/.gitattributes
+/.github
+/test
+
+

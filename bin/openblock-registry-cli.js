@@ -18,6 +18,7 @@ const info = require('../src/commands/info');
 const config = require('../src/commands/config');
 const unpublish = require('../src/commands/unpublish');
 const i18n = require('../src/commands/i18n');
+const verifyTag = require('../src/commands/verify-tag');
 
 program
     .name('openblock-registry-cli')
@@ -72,5 +73,10 @@ program
     .description('Manage translations (extract/push/update)')
     .option('-d, --dir <path>', 'Working directory')
     .action(i18n);
+
+program
+    .command('verify-tag [tag]')
+    .description('Verify git tag matches package.json version (used by husky pre-push hook)')
+    .action(verifyTag);
 
 program.parse();

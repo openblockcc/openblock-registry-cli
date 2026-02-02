@@ -4,7 +4,6 @@
  * Used by husky pre-push hook to prevent pushing tags with mismatched versions
  */
 
-const {execSync} = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const chalk = require('chalk');
@@ -22,48 +21,64 @@ const readPackageJson = () => {
 };
 
 /**
+ * Read all stdin synchronously
+ * @returns {string} stdin content
+ */
+const readStdinSync = () => {
+    // Try to read stdin synchronously using fs
+    try {
+        // On Unix-like systems, fd 0 is stdin
+        // On Windows, this may behave differently
+        const BUFSIZE = 1024;
+        let input = '';
+        const buf = Buffer.alloc(BUFSIZE);
+
+        // Check if stdin has data available
+        // Use non-blocking read with a small timeout
+        const fd = fs.openSync(0, 'r');
+        try {
+            let bytesRead;
+            while ((bytesRead = fs.readSync(fd, buf, 0, BUFSIZE)) > 0) {
+                input += buf.toString('utf8', 0, bytesRead);
+            }
+        } catch (e) {
+            // EAGAIN or similar - no more data
+        }
+        return input;
+    } catch (e) {
+        return '';
+    }
+};
+
+/**
  * Parse refs being pushed from stdin (git pre-push hook format)
  * Format: <local ref> <local sha> <remote ref> <remote sha>
- * @returns {Promise<string[]>} Array of tag names being pushed
+ * @returns {string[]} Array of tag names being pushed
  */
 const parseTagsFromStdin = () => {
-    return new Promise(resolve => {
-        let input = '';
+    // Check if stdin is a TTY (interactive mode, no piped input)
+    if (process.stdin.isTTY) {
+        return [];
+    }
 
-        // Check if stdin is a TTY (interactive mode, no piped input)
-        if (process.stdin.isTTY) {
-            resolve([]);
-            return;
-        }
+    const input = readStdinSync();
+    const tags = [];
+    const lines = input.trim().split('\n')
+        .filter(line => line);
 
-        process.stdin.setEncoding('utf-8');
-        process.stdin.on('data', chunk => {
-            input += chunk;
-        });
-
-        process.stdin.on('end', () => {
-            const tags = [];
-            const lines = input.trim().split('\n').filter(line => line);
-
-            for (const line of lines) {
-                const parts = line.split(/\s+/);
-                if (parts.length >= 3) {
-                    const localRef = parts[0];
-                    // Check if this is a tag ref
-                    if (localRef.startsWith('refs/tags/')) {
-                        const tagName = localRef.replace('refs/tags/', '');
-                        tags.push(tagName);
-                    }
-                }
+    for (const line of lines) {
+        const parts = line.split(/\s+/);
+        if (parts.length >= 1) {
+            const localRef = parts[0];
+            // Check if this is a tag ref
+            if (localRef.startsWith('refs/tags/')) {
+                const tagName = localRef.replace('refs/tags/', '');
+                tags.push(tagName);
             }
-            resolve(tags);
-        });
+        }
+    }
 
-        // Set a timeout in case stdin never ends
-        setTimeout(() => {
-            resolve([]);
-        }, 1000);
-    });
+    return tags;
 };
 
 /**
@@ -100,7 +115,7 @@ const verifyTagCommand = async tagName => {
             console.log(`   Tag to verify: ${chalk.bold(tagName)}`);
         } else {
             // Parse tags from stdin (pre-push hook mode)
-            tagsToVerify = await parseTagsFromStdin();
+            tagsToVerify = parseTagsFromStdin();
 
             if (tagsToVerify.length === 0) {
                 // No tags being pushed, nothing to verify
@@ -143,4 +158,3 @@ const verifyTagCommand = async tagName => {
 };
 
 module.exports = verifyTagCommand;
-

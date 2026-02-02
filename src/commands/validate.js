@@ -47,6 +47,7 @@ const getGitHubUrl = (repository, repoInfo) => {
  * Execute validate command
  * @param {object} options - Validation options
  * @param {boolean} options.silent - If true, don't print summary messages
+ * @param {boolean} options.skipTag - If true, skip Git tag validation
  * @returns {object} Validation result with packageInfo, repoInfo, repoUrl
  */
 const validate = async function (options = {}) {
@@ -62,10 +63,14 @@ const validate = async function (options = {}) {
         const packageInfo = await validatePackageJson();
         spinner.succeed(`package.json validated: ${chalk.green(packageInfo.openblock.id)} v${packageInfo.version}`);
 
-        // 2. Validate Git status
-        spinner.start('Checking Git status...');
-        await validateGitStatus(packageInfo.version);
-        spinner.succeed(`Git tag ${chalk.green(packageInfo.version)} exists and pushed`);
+        // 2. Validate Git status (skip if --skip-tag is set)
+        if (options.skipTag) {
+            spinner.info('Git tag validation skipped (--skip-tag)');
+        } else {
+            spinner.start('Checking Git status...');
+            await validateGitStatus(packageInfo.version);
+            spinner.succeed(`Git tag ${chalk.green(packageInfo.version)} exists and pushed`);
+        }
 
         // 3. Validate required files
         spinner.start('Validating required files...');

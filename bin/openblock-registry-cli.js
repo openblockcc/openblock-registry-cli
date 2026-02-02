@@ -50,6 +50,7 @@ program
 program
     .command('validate')
     .description('Validate your plugin without publishing')
+    .option('-s, --skip-tag', 'Skip Git tag validation')
     .action(validate);
 
 program

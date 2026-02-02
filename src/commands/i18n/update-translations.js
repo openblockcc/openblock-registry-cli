@@ -137,9 +137,9 @@ const loadLocalTranslations = workDir => {
 
     // Load en.json files
     const enFiles = {
-        [RESOURCES.INTERFACE]: path.join(workDir, 'translations/interface/en.json'),
-        [RESOURCES.EXTENSIONS]: path.join(workDir, 'translations/extensions/en.json'),
-        [RESOURCES.BLOCKS]: path.join(workDir, 'translations/blocks/en.json')
+        [RESOURCES.INTERFACE]: path.join(workDir, '.translations/interface/en.json'),
+        [RESOURCES.EXTENSIONS]: path.join(workDir, '.translations/extensions/en.json'),
+        [RESOURCES.BLOCKS]: path.join(workDir, '.translations/blocks/en.json')
     };
 
     for (const [resource, filePath] of Object.entries(enFiles)) {

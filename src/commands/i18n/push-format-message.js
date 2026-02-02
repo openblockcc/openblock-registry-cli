@@ -5,9 +5,9 @@
  * Push extracted i18n content to Transifex.
  *
  * Pushes the following translation files to Transifex:
- * - translations/interface/en.json → openblock-resources/interface
- * - translations/extensions/en.json → openblock-resources/extensions
- * - translations/blocks/en.json → openblock-resources/blocks
+ * - .translations/interface/en.json → openblock-resources/interface
+ * - .translations/extensions/en.json → openblock-resources/extensions
+ * - .translations/blocks/en.json → openblock-resources/blocks
  *
  * Usage:
  *   node push-format-message.js [--dir=path/to/resources]
@@ -73,15 +73,15 @@ const main = () => {
     const resources = [
         {
             name: 'interface',
-            file: path.join(workDirResolved, 'translations/interface/en.json')
+            file: path.join(workDirResolved, '.translations/interface/en.json')
         },
         {
             name: 'extensions',
-            file: path.join(workDirResolved, 'translations/extensions/en.json')
+            file: path.join(workDirResolved, '.translations/extensions/en.json')
         },
         {
             name: 'blocks',
-            file: path.join(workDirResolved, 'translations/blocks/en.json')
+            file: path.join(workDirResolved, '.translations/blocks/en.json')
         }
     ];
 

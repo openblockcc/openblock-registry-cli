@@ -245,24 +245,6 @@ const updateRegistryJson = function (registryJson, repoUrl, pluginType) {
 };
 
 /**
- * Remove repository URL from registry.json
- * @param {object} registryJson - Current registry.json
- * @param {string} repoUrl - GitHub repository URL to remove
- * @returns {object} Updated registry.json
- */
-const removeFromRegistryJson = function (registryJson, repoUrl) {
-    // Search in both devices and extensions
-    for (const collectionName of ['devices', 'extensions']) {
-        const collection = registryJson[collectionName];
-        if (!collection) continue;
-
-        registryJson[collectionName] = collection.filter(url => url !== repoUrl);
-    }
-
-    return registryJson;
-};
-
-/**
  * Get file SHA from repository
  * @param {string} token - GitHub token
  * @param {string} owner - Repository owner

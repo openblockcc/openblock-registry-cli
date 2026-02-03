@@ -2,55 +2,20 @@
 
 /**
  * @fileoverview
- * Pull translations from Transifex and generate translation files for plugins.
+ * Generate translation files for a single plugin resource.
  *
  * Workflow:
- * 1. Pull translations from Transifex (interface, extensions, blocks)
- * 2. Scan plugin directories (extensions/ and devices/)
- * 3. Match translation keys to each plugin
- * 4. Generate src/translation.js for each plugin (ESM format)
- *
- * Environment:
- *   TX_TOKEN - Transifex API token (required)
+ * 1. Extract translation keys from plugin source files
+ * 2. Merge with existing translations (preserving manual translations)
+ * 3. Generate src/translations.js for the plugin (ESM format)
  *
  * Usage:
- *   node update-translations-new.js [--dir=path/to/resources]
+ *   node update-translations.js [--dir=path/to/plugin]
  */
 
 const fs = require('fs-extra');
 const path = require('path');
 const locales = require('openblock-l10n').default;
-const {txPull} = require('openblock-l10n/lib/transifex.js');
-
-// Check if running in local mode (without Transifex) or pulling from Transifex
-const isLocalMode = !process.env.TX_TOKEN;
-
-if (isLocalMode) {
-    console.log('Running in LOCAL mode (using local en.json files)\n');
-    console.log('Note: Set TX_TOKEN environment variable to pull from Transifex\n');
-} else {
-    console.log('Running in TRANSIFEX mode (pulling from Transifex)\n');
-}
-
-// ============================================================================
-// Configuration
-// ============================================================================
-
-const PROJECT = 'openblock-resources';
-const RESOURCES = {
-    INTERFACE: 'interface',
-    EXTENSIONS: 'extensions',
-    BLOCKS: 'blocks'
-};
-const MODE = 'reviewed';
-
-const LOCALE_MAP = {
-    'aa-dj': 'aa_DJ',
-    'es-419': 'es_419',
-    'pt-br': 'pt_BR',
-    'zh-cn': 'zh_CN',
-    'zh-tw': 'zh_TW'
-};
 
 // ============================================================================
 // Utilities
@@ -102,111 +67,6 @@ const parseArgs = () => {
     return args;
 };
 
-/**
- * Pull translations for a specific resource from Transifex
- * @param {string} resource - Resource name (interface/extensions/blocks)
- * @param {string} locale - Locale code
- * @returns {Promise<object>} Translation data
- */
-const pullTranslation = async (resource, locale) => {
-    const txLocale = LOCALE_MAP[locale] || locale;
-    try {
-        const data = await txPull(PROJECT, resource, txLocale, MODE);
-        return data;
-    } catch (error) {
-        console.warn(`Warning: Failed to pull ${resource}/${locale}: ${error.message}`);
-        return {};
-    }
-};
-
-/**
- * Load local translations from en.json files
- * @param {string} workDir - Working directory
- * @returns {object} All translation data organized by resource and locale
- */
-const loadLocalTranslations = workDir => {
-    console.log('Loading local translations from en.json files...\n');
-
-    const allTranslations = {
-        [RESOURCES.INTERFACE]: {},
-        [RESOURCES.EXTENSIONS]: {},
-        [RESOURCES.BLOCKS]: {}
-    };
-
-    const localeList = Object.keys(locales);
-
-    // Load en.json files
-    const enFiles = {
-        [RESOURCES.INTERFACE]: path.join(workDir, '.translations/interface/en.json'),
-        [RESOURCES.EXTENSIONS]: path.join(workDir, '.translations/extensions/en.json'),
-        [RESOURCES.BLOCKS]: path.join(workDir, '.translations/blocks/en.json')
-    };
-
-    for (const [resource, filePath] of Object.entries(enFiles)) {
-        if (fs.existsSync(filePath)) {
-            try {
-                const enData = fs.readJsonSync(filePath);
-
-                // For each locale, use English as fallback
-                for (const locale of localeList) {
-                    allTranslations[resource][locale] = {};
-
-                    // Copy English data to all locales
-                    Object.keys(enData).forEach(key => {
-                        if (locale === 'en') {
-                            // For English, use the message directly
-                            allTranslations[resource][locale][key] = enData[key].message || enData[key];
-                        } else {
-                            // For other locales, use English as placeholder
-                            allTranslations[resource][locale][key] = enData[key].message || enData[key];
-                        }
-                    });
-                }
-
-                console.log(`✓ Loaded ${resource} (${Object.keys(enData).length} keys)`);
-            } catch (e) {
-                console.warn(`⚠ Failed to load ${filePath}: ${e.message}`);
-            }
-        } else {
-            console.warn(`⚠ File not found: ${filePath}`);
-        }
-    }
-
-    console.log();
-    return allTranslations;
-};
-
-/**
- * Pull all translations from Transifex
- * @returns {Promise<object>} All translation data organized by resource and locale
- */
-const pullAllTranslations = async () => {
-    console.log('Pulling translations from Transifex...\n');
-
-    const allTranslations = {
-        [RESOURCES.INTERFACE]: {},
-        [RESOURCES.EXTENSIONS]: {},
-        [RESOURCES.BLOCKS]: {}
-    };
-
-    const localeList = Object.keys(locales);
-
-    for (const resource of Object.values(RESOURCES)) {
-        console.log(`Pulling ${resource}...`);
-
-        for (const locale of localeList) {
-            const data = await pullTranslation(resource, locale);
-            if (!allTranslations[resource][locale]) {
-                allTranslations[resource][locale] = {};
-            }
-            Object.assign(allTranslations[resource][locale], data);
-        }
-
-        console.log(`✓ ${resource} complete (${localeList.length} locales)\n`);
-    }
-
-    return allTranslations;
-};
 
 /**
  * Read package.json from plugin directory
@@ -549,10 +409,9 @@ const extractEnglishValues = (pluginDir, keys) => {
  * Build translation objects for a plugin (separated by type)
  * @param {string} pluginDir - Plugin directory path
  * @param {object} keys - Translation keys
- * @param {object} allTranslations - All translations from Transifex (not used in local mode)
  * @returns {object} Translation objects organized by type and locale
  */
-const buildPluginTranslations = (pluginDir, keys, allTranslations) => {
+const buildPluginTranslations = (pluginDir, keys) => {
     const result = {
         interface: {},
         extensions: {},
@@ -561,68 +420,36 @@ const buildPluginTranslations = (pluginDir, keys, allTranslations) => {
 
     const localeList = Object.keys(locales);
 
-    if (isLocalMode) {
-        // In local mode, extract English values directly from source files
-        const englishValues = extractEnglishValues(pluginDir, keys);
+    // Extract English values directly from source files
+    const englishValues = extractEnglishValues(pluginDir, keys);
 
-        for (const locale of localeList) {
-            // Build interface translations
-            result.interface[locale] = {};
-            keys.interface.forEach(key => {
-                const enValue = englishValues.interface[key];
-                if (enValue) {
-                    result.interface[locale][key] = enValue;
-                }
-            });
+    for (const locale of localeList) {
+        // Build interface translations
+        result.interface[locale] = {};
+        keys.interface.forEach(key => {
+            const enValue = englishValues.interface[key];
+            if (enValue) {
+                result.interface[locale][key] = enValue;
+            }
+        });
 
-            // Build extension translations
-            result.extensions[locale] = {};
-            keys.extensions.forEach(key => {
-                const enValue = englishValues.extensions[key];
-                if (enValue) {
-                    result.extensions[locale][key] = enValue;
-                }
-            });
+        // Build extension translations
+        result.extensions[locale] = {};
+        keys.extensions.forEach(key => {
+            const enValue = englishValues.extensions[key];
+            if (enValue) {
+                result.extensions[locale][key] = enValue;
+            }
+        });
 
-            // Build block translations
-            result.blocks[locale] = {};
-            keys.blocks.forEach(key => {
-                const enValue = englishValues.blocks[key];
-                if (enValue) {
-                    result.blocks[locale][key] = enValue;
-                }
-            });
-        }
-    } else {
-        // In Transifex mode, use allTranslations
-        for (const locale of localeList) {
-            // Build interface translations
-            result.interface[locale] = {};
-            keys.interface.forEach(key => {
-                const value = allTranslations[RESOURCES.INTERFACE][locale]?.[key];
-                if (value) {
-                    result.interface[locale][key] = value;
-                }
-            });
-
-            // Build extension translations
-            result.extensions[locale] = {};
-            keys.extensions.forEach(key => {
-                const value = allTranslations[RESOURCES.EXTENSIONS][locale]?.[key];
-                if (value) {
-                    result.extensions[locale][key] = value;
-                }
-            });
-
-            // Build block translations
-            result.blocks[locale] = {};
-            keys.blocks.forEach(key => {
-                const value = allTranslations[RESOURCES.BLOCKS][locale]?.[key];
-                if (value) {
-                    result.blocks[locale][key] = value;
-                }
-            });
-        }
+        // Build block translations
+        result.blocks[locale] = {};
+        keys.blocks.forEach(key => {
+            const enValue = englishValues.blocks[key];
+            if (enValue) {
+                result.blocks[locale][key] = enValue;
+            }
+        });
     }
 
     return result;
@@ -633,20 +460,16 @@ const buildPluginTranslations = (pluginDir, keys, allTranslations) => {
  * @returns {string} File content
  */
 const generateTranslationFile = translations => {
-    let header;
-    if (isLocalMode) {
-        header = `/* eslint-disable quote-props */
+    const header = `/* eslint-disable quote-props */
 /* eslint-disable max-len */
 /**
- * Translation file for this resouce.
+ * Translation file for this resource.
  *
- * IMPORTANT:
- * - The "en" (English) section is automatically generated from source files.
- *   Do NOT modify the "en" section manually.
- * - Other language sections (e.g., "zh-cn", "zh-tw", "ja", etc.) should be
- *   manually translated by you.
- * - When you run the extraction script again, only the "en" section will be
- *   updated. Your manual translations in other languages will be preserved.
+ * This file is generated by combining automatic extraction and manual translations:
+ * - The "en" (English) section is automatically extracted from source files
+ * - Other language sections can be manually translated or pulled from Transifex
+ * - When regenerating, existing manual translations are preserved when the English
+ *   source text hasn't changed
  *
  * Structure:
  * - interface: translations for name/description (used by GUI formatMessage)
@@ -654,21 +477,6 @@ const generateTranslationFile = translations => {
  * - blocks: translations for Blockly blocks (used by Blockly.Msg)
  */
 `;
-    } else {
-        header = `/* eslint-disable quote-props */
-/* eslint-disable max-len */
-/**
- * Translation file - automatically generated from Transifex.
- * Do NOT modify this file manually.
- * All translations are managed on Transifex platform.
- *
- * Structure:
- * - interface: translations for name/description (used by GUI formatMessage)
- * - extensions: translations for extension blocks (used by VM formatMessage)
- * - blocks: translations for Blockly blocks (used by Blockly.Msg)
- */
-`;
-    }
 
     // Build separated structure
     const separatedTranslations = {
@@ -691,10 +499,9 @@ export default ${formattedTranslations};
 /**
  * Process a single plugin
  * @param {string} pluginDir - Plugin directory path
- * @param {object} allTranslations - All translations from Transifex
  * @returns {boolean} Success status
  */
-const processPlugin = (pluginDir, allTranslations) => {
+const processPlugin = pluginDir => {
     const pkg = readPackageJson(pluginDir);
     if (!pkg || !pkg.openblock) {
         return false;
@@ -714,16 +521,14 @@ const processPlugin = (pluginDir, allTranslations) => {
 
     const outputPath = path.join(pluginDir, 'src/translations.js');
 
-    // Build new translations
-    let translations = buildPluginTranslations(pluginDir, keys, allTranslations);
+    // Build new translations from source files
+    let translations = buildPluginTranslations(pluginDir, keys);
 
-    // In local mode, merge with existing translations (incremental update)
-    if (isLocalMode) {
-        const existingTranslations = parseExistingTranslations(outputPath);
-        if (existingTranslations) {
-            console.log(`  → Merging with existing translations (incremental update)`);
-            translations = mergeTranslations(translations, existingTranslations, keys);
-        }
+    // Merge with existing translations (incremental update)
+    const existingTranslations = parseExistingTranslations(outputPath);
+    if (existingTranslations) {
+        console.log(`  → Merging with existing translations (incremental update)`);
+        translations = mergeTranslations(translations, existingTranslations, keys);
     }
 
     // Generate translations.js file (includes interface, extensions, and blocks)
@@ -741,16 +546,6 @@ const processPlugin = (pluginDir, allTranslations) => {
 };
 
 /**
- * Check if directory is a plugin directory (has package.json with openblock field)
- * @param {string} dir - Directory path
- * @returns {boolean} True if it's a plugin directory
- */
-const isPluginDirectory = dir => {
-    const pkg = readPackageJson(dir);
-    return pkg && pkg.openblock && (pkg.openblock.extensionId || pkg.openblock.deviceId);
-};
-
-/**
  * Main function
  */
 const main = async () => {
@@ -759,62 +554,12 @@ const main = async () => {
 
     console.log(`Working directory: ${workDir}\n`);
 
-    // Check if workDir is a single plugin directory
-    const isSinglePlugin = isPluginDirectory(workDir);
-
-    // Get translations (from Transifex or local files)
-    let allTranslations;
-    if (isLocalMode) {
-        // In local mode, we don't need allTranslations for single plugin
-        if (isSinglePlugin) {
-            allTranslations = {
-                [RESOURCES.INTERFACE]: {},
-                [RESOURCES.EXTENSIONS]: {},
-                [RESOURCES.BLOCKS]: {}
-            };
-        } else {
-            allTranslations = loadLocalTranslations(workDir);
-        }
+    // Process single resource
+    if (processPlugin(workDir)) {
+        console.log('\n✓ Complete! Translation file generated successfully.');
     } else {
-        allTranslations = await pullAllTranslations();
+        console.log('\n⚠ No translation file generated.');
     }
-
-    let processedCount = 0;
-
-    if (isSinglePlugin) {
-        // Single plugin mode
-        console.log('Running in SINGLE RESOUCE mode\n');
-        if (processPlugin(workDir, allTranslations)) {
-            processedCount++;
-        }
-    } else {
-        // Multi-plugin mode
-        console.log('Running in MULTI RESOUCE mode\n');
-        const resourceTypes = ['extensions', 'devices'];
-
-        for (const type of resourceTypes) {
-            const typeDir = path.join(workDir, type);
-            if (!fs.existsSync(typeDir)) {
-                console.log(`Skipping ${type}/ (not found)\n`);
-                continue;
-            }
-
-            const plugins = fs.readdirSync(typeDir, {withFileTypes: true})
-                .filter(dirent => dirent.isDirectory())
-                .map(dirent => dirent.name);
-
-            console.log(`Processing ${plugins.length} plugins in ${type}/\n`);
-
-            for (const pluginName of plugins) {
-                const pluginDir = path.join(typeDir, pluginName);
-                if (processPlugin(pluginDir, allTranslations)) {
-                    processedCount++;
-                }
-            }
-        }
-    }
-
-    console.log(`\n✓ Complete! Processed ${processedCount} resouce${processedCount === 1 ? '' : 's'}`);
 };
 
 main().catch(error => {

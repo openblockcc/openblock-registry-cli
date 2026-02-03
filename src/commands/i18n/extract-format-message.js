@@ -2,12 +2,12 @@
 
 /**
  * @fileoverview
- * Extract i18n content from plugin.
+ * Extract i18n content from a single plugin resource.
  *
  * Extraction sources:
- * 1. package.json - openblock.l10n fields
- * 2. main - formatMessage() calls
- * 3. msg- Block message definitions
+ * 1. package.json - openblock.name and openblock.description (formatMessage fields)
+ * 2. main - formatMessage() calls in extension/device source files
+ * 3. msg - Block message definitions
  *
  * Output files:
  * - .translations/interface/en.json
@@ -15,7 +15,7 @@
  * - .translations/blocks/en.json
  *
  * Usage:
- *   node extract-translations.js [--dir=path/to/resources]
+ *   node extract-format-message.js [--dir=path/to/plugin]
  */
 
 const fs = require('fs-extra');
@@ -183,87 +183,9 @@ const scanPlugin = pluginDir => {
     return result;
 };
 
-/**
- * Scan all plugins in extensions/ and devices/ directories
- * @param {string} workDir - Working directory
- * @returns {{interface: object, extensions: object, blocks: object}} All extracted translations
- */
-const scanAllPlugins = workDir => {
-    const allResults = {
-        interface: {},
-        extensions: {},
-        blocks: {}
-    };
-
-    const resourceTypes = ['extensions', 'devices'];
-
-    for (const type of resourceTypes) {
-        const typeDir = path.join(workDir, type);
-        if (!fs.existsSync(typeDir)) {
-            console.log(`Skipping ${type}/ (not found)`);
-            continue;
-        }
-
-        const plugins = fs.readdirSync(typeDir, {withFileTypes: true})
-            .filter(dirent => dirent.isDirectory())
-            .map(dirent => dirent.name);
-
-        console.log(`Scanning ${plugins.length} resouces in ${type}/`);
-
-        for (const pluginName of plugins) {
-            const pluginDir = path.join(typeDir, pluginName);
-            const result = scanPlugin(pluginDir);
-
-            // Merge interface messages
-            result.interface.forEach(msg => {
-                allResults.interface[msg.id] = {
-                    message: msg.default,
-                    description: msg.default
-                };
-            });
-
-            // Merge extension messages
-            result.extensions.forEach(msg => {
-                allResults.extensions[msg.id] = {
-                    message: msg.default,
-                    description: msg.default
-                };
-            });
-
-            // Merge block messages
-            Object.assign(allResults.blocks, result.blocks);
-        }
-    }
-
-    return allResults;
-};
-
 // ============================================================================
 // Main
 // ============================================================================
-
-/**
- * Read package.json from plugin directory
- * @param {string} pluginDir - Plugin directory path
- * @returns {object|null} Package.json content or null
- */
-const readPackageJson = pluginDir => {
-    const packagePath = path.join(pluginDir, 'package.json');
-    if (!fs.existsSync(packagePath)) {
-        return null;
-    }
-    return fs.readJsonSync(packagePath);
-};
-
-/**
- * Check if directory is a plugin directory (has package.json with openblock field)
- * @param {string} dir - Directory path
- * @returns {boolean} True if it's a plugin directory
- */
-const isPluginDirectory = dir => {
-    const pkg = readPackageJson(dir);
-    return pkg && pkg.openblock && (pkg.openblock.extensionId || pkg.openblock.deviceId);
-};
 
 /**
  * Main function to extract translations and write to files
@@ -273,98 +195,61 @@ const main = () => {
     const workDir = path.resolve(dir || './');
 
     console.log(`Working directory: ${workDir}\n`);
+    console.log(`Extracting translations from: ${workDir}\n`);
 
-    // Check if workDir is a single plugin directory
-    const isSinglePlugin = isPluginDirectory(workDir);
+    const result = scanPlugin(workDir);
+    const totalKeys = result.interface.length + result.extensions.length + Object.keys(result.blocks).length;
 
-    if (isSinglePlugin) {
-        // Single plugin mode
-        console.log('Running in SINGLE RESOUCE mode\n');
-        console.log(`Extracting translations from: ${workDir}\n`);
-
-        const result = scanPlugin(workDir);
-        const totalKeys = result.interface.length + result.extensions.length + Object.keys(result.blocks).length;
-
-        if (totalKeys === 0) {
-            console.log('⚠ No translation keys found\n');
-            return;
-        }
-
-        // Convert arrays to objects for single plugin mode
-        const results = {
-            interface: {},
-            extensions: {},
-            blocks: result.blocks
-        };
-
-        // Convert interface array to object
-        result.interface.forEach(msg => {
-            results.interface[msg.id] = {
-                message: msg.default,
-                description: msg.default
-            };
-        });
-
-        // Convert extensions array to object
-        result.extensions.forEach(msg => {
-            results.extensions[msg.id] = {
-                message: msg.default,
-                description: msg.default
-            };
-        });
-
-        // Write interface translations
-        const interfacePath = path.join(workDir, '.translations/interface/en.json');
-        fs.ensureDirSync(path.dirname(interfacePath));
-        fs.writeJsonSync(interfacePath, results.interface, {spaces: 4});
-        console.log(`\n✓ Interface translations: ${interfacePath}`);
-        console.log(`  ${Object.keys(results.interface).length} messages`);
-
-        // Write extension translations
-        const extensionsPath = path.join(workDir, '.translations/extensions/en.json');
-        fs.ensureDirSync(path.dirname(extensionsPath));
-        fs.writeJsonSync(extensionsPath, results.extensions, {spaces: 4});
-        console.log(`\n✓ Extension translations: ${extensionsPath}`);
-        console.log(`  ${Object.keys(results.extensions).length} messages`);
-
-        // Write block translations
-        const blocksPath = path.join(workDir, '.translations/blocks/en.json');
-        fs.ensureDirSync(path.dirname(blocksPath));
-        fs.writeJsonSync(blocksPath, results.blocks, {spaces: 4});
-        console.log(`\n✓ Block translations: ${blocksPath}`);
-        console.log(`  ${Object.keys(results.blocks).length} messages`);
-
-        console.log('\n✓ Extraction complete!');
-    } else {
-        // Multi-plugin mode
-        console.log('Running in MULTI RESOUCE mode\n');
-        console.log(`Extracting translations from: ${workDir}\n`);
-
-        const results = scanAllPlugins(workDir);
-
-        // Write interface translations
-        const interfacePath = path.join(workDir, '.translations/interface/en.json');
-        fs.ensureDirSync(path.dirname(interfacePath));
-        fs.writeJsonSync(interfacePath, results.interface, {spaces: 4});
-        console.log(`\n✓ Interface translations: ${interfacePath}`);
-        console.log(`  ${Object.keys(results.interface).length} messages`);
-
-        // Write extension translations
-        const extensionsPath = path.join(workDir, '.translations/extensions/en.json');
-        fs.ensureDirSync(path.dirname(extensionsPath));
-        fs.writeJsonSync(extensionsPath, results.extensions, {spaces: 4});
-        console.log(`\n✓ Extension translations: ${extensionsPath}`);
-        console.log(`  ${Object.keys(results.extensions).length} messages`);
-
-        // Write block translations
-        const blocksPath = path.join(workDir, '.translations/blocks/en.json');
-        fs.ensureDirSync(path.dirname(blocksPath));
-        fs.writeJsonSync(blocksPath, results.blocks, {spaces: 4});
-        console.log(`\n✓ Block translations: ${blocksPath}`);
-        console.log(`  ${Object.keys(results.blocks).length} messages`);
-
-        console.log('\n✓ Extraction complete!');
+    if (totalKeys === 0) {
+        console.log('⚠ No translation keys found\n');
+        return;
     }
+
+    // Convert arrays to objects
+    const results = {
+        interface: {},
+        extensions: {},
+        blocks: result.blocks
+    };
+
+    // Convert interface array to object
+    result.interface.forEach(msg => {
+        results.interface[msg.id] = {
+            message: msg.default,
+            description: msg.default
+        };
+    });
+
+    // Convert extensions array to object
+    result.extensions.forEach(msg => {
+        results.extensions[msg.id] = {
+            message: msg.default,
+            description: msg.default
+        };
+    });
+
+    // Write interface translations
+    const interfacePath = path.join(workDir, '.translations/interface/en.json');
+    fs.ensureDirSync(path.dirname(interfacePath));
+    fs.writeJsonSync(interfacePath, results.interface, {spaces: 4});
+    console.log(`\n✓ Interface translations: ${interfacePath}`);
+    console.log(`  ${Object.keys(results.interface).length} messages`);
+
+    // Write extension translations
+    const extensionsPath = path.join(workDir, '.translations/extensions/en.json');
+    fs.ensureDirSync(path.dirname(extensionsPath));
+    fs.writeJsonSync(extensionsPath, results.extensions, {spaces: 4});
+    console.log(`\n✓ Extension translations: ${extensionsPath}`);
+    console.log(`  ${Object.keys(results.extensions).length} messages`);
+
+    // Write block translations
+    const blocksPath = path.join(workDir, '.translations/blocks/en.json');
+    fs.ensureDirSync(path.dirname(blocksPath));
+    fs.writeJsonSync(blocksPath, results.blocks, {spaces: 4});
+    console.log(`\n✓ Block translations: ${blocksPath}`);
+    console.log(`  ${Object.keys(results.blocks).length} messages`);
+
+    console.log('\n✓ Extraction complete!');
 };
 
 main();

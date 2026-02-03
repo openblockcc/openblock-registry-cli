@@ -47,7 +47,7 @@ const publish = async function (options = {}) {
         console.log(chalk.green('\n[OK] Submission successful!\n'));
         console.log('   PR will be automatically validated.');
         console.log('   After validation, wait for maintainer review.');
-        console.log('   Once merged, your plugin will be available in ~10 minutes.\n');
+        console.log('   Once merged, your plugin will be processed during the next daily scan.\n');
         console.log(`   ${chalk.cyan('View PR:')} ${prResult.url}\n`);
 
     } catch (error) {

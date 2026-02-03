@@ -232,10 +232,8 @@ const updateRegistryJson = function (registryJson, repoUrl, pluginType) {
     const exists = collection.includes(repoUrl);
 
     if (!exists) {
-        // Add new URL
-        collection.push(repoUrl);
-        // Sort alphabetically
-        collection.sort();
+        // Add new URL at the beginning to avoid JSON comma conflicts in PR merges
+        collection.unshift(repoUrl);
     }
 
     return {

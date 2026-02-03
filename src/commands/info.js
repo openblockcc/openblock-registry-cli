@@ -5,11 +5,10 @@
 
 const chalk = require('chalk');
 const ora = require('ora');
-const path = require('path');
-const fs = require('fs');
 const fetch = require('node-fetch');
 
 const logger = require('../utils/logger');
+const validatePackageJson = require('../validators/package-json');
 
 const REGISTRY_URL = 'https://registry.openblock.cc/packages.json';
 
@@ -24,18 +23,9 @@ const info = async function (options = {}) {
     const spinner = ora();
 
     try {
-        // Read local package.json
-        const packageJsonPath = path.join(process.cwd(), 'package.json');
-        if (!fs.existsSync(packageJsonPath)) {
-            throw new Error('package.json not found in current directory');
-        }
-
-        const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+        // Validate and read package.json (this normalizes deviceId/extensionId to id)
+        const packageJson = await validatePackageJson();
         const openblock = packageJson.openblock;
-
-        if (!openblock || !openblock.id) {
-            throw new Error('No openblock.id found in package.json');
-        }
 
         console.log(`   ${chalk.bold('Local package:')} ${openblock.id}`);
         console.log(`   ${chalk.bold('Local version:')} ${packageJson.version}\n`);
@@ -52,29 +42,36 @@ const info = async function (options = {}) {
         spinner.succeed('Registry fetched');
 
         // Find package in registry
-        const packageType = `${openblock.type}s`; // device -> devices
+        const packageType = `${openblock.pluginType}s`; // device -> devices, extension -> extensions
         const packages = registry.packages[packageType] || [];
-        const pkg = packages.find(p => p.id === openblock.id);
 
-        if (!pkg) {
+        // The registry structure is a flat array where each entry is a version
+        // Filter all entries that match our plugin ID
+        const idField = openblock.pluginType === 'device' ? 'deviceId' : 'extensionId';
+        const matchingVersions = packages.filter(p => p[idField] === openblock.id);
+
+        if (matchingVersions.length === 0) {
             console.log(chalk.yellow('\n[WARN] Package not found in registry'));
             console.log(`   This package has not been published yet.\n`);
             return;
         }
 
+        // Get the first entry for name and other metadata
+        const firstEntry = matchingVersions[0];
+
         // Display versions
-        console.log(chalk.green(`\n[OK] Found in registry: ${pkg.name}\n`));
+        console.log(chalk.green(`\n[OK] Found in registry: ${firstEntry.name}\n`));
         console.log(`   ${chalk.bold('Published versions:')}`);
 
-        const versions = options.all ? pkg.versions : pkg.versions.slice(0, 5);
-        versions.forEach(v => {
+        const versionsToShow = options.all ? matchingVersions : matchingVersions.slice(0, 5);
+        versionsToShow.forEach(v => {
             const isCurrent = v.version === packageJson.version;
             const marker = isCurrent ? chalk.green(' (current)') : '';
-            console.log(`   - ${v.version} (${v.releaseDate})${marker}`);
+            console.log(`   - ${v.version}${marker}`);
         });
 
-        if (!options.all && pkg.versions.length > 5) {
-            console.log(`   ... and ${pkg.versions.length - 5} more (use --all to see all)`);
+        if (!options.all && matchingVersions.length > 5) {
+            console.log(`   ... and ${matchingVersions.length - 5} more (use --all to see all)`);
         }
 
         console.log('');

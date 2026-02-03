@@ -12,7 +12,7 @@
 const fetch = require('node-fetch');
 
 const {getAuthenticatedUser} = require('./auth');
-const {generatePublishPRBody, generateUnpublishPRBody, generatePRTitle} = require('../templates/pr-body');
+const {generatePublishPRBody, generatePRTitle} = require('../templates/pr-body');
 
 const REGISTRY_OWNER = 'openblockcc';
 const REGISTRY_REPO = 'openblock-registry';
@@ -357,28 +357,6 @@ const commitRegistryChanges = async function (token, owner, repo, branch, conten
 };
 
 /**
- * Commit unpublish changes to registry.json
- * @param {string} token - GitHub token
- * @param {string} owner - Repository owner (fork owner)
- * @param {string} repo - Repository name
- * @param {string} branch - Branch name
- * @param {object} content - Updated registry.json content
- * @param {string} repoUrl - Repository URL being removed
- */
-const commitUnpublishChanges = async function (token, owner, repo, branch, content, repoUrl) {
-    const message = `feat: remove ${repoUrl}`;
-
-    // Get existing file SHA
-    const sha = await getFileSha(token, owner, repo, branch, REGISTRY_FILE);
-
-    // Format JSON with 4-space indentation for readability
-    const jsonContent = JSON.stringify(content, null, 4);
-
-    // Commit the file
-    await commitFile(token, owner, repo, branch, REGISTRY_FILE, jsonContent, message, sha);
-};
-
-/**
  * Helper to normalize i18n field (string or formatMessage object)
  * @param {string|object} value - Field value
  * @returns {string} Normalized string value
@@ -430,58 +408,6 @@ const buildPRBody = (packageInfo, repoUrl, isNewPlugin) => {
 const createPR = async function (token, username, branch, packageInfo, repoUrl, isNewPlugin) {
     const title = generatePRTitle('publish', packageInfo.openblock.id, packageInfo.version);
     const body = buildPRBody(packageInfo, repoUrl, isNewPlugin);
-
-    const response = await fetch(
-        `https://api.github.com/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/pulls`,
-        {
-            method: 'POST',
-            headers: {
-                'Authorization': `token ${token}`,
-                'Accept': 'application/vnd.github.v3+json',
-                'User-Agent': 'openblock-cli',
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                title: title,
-                body: body,
-                head: `${username}:${branch}`,
-                base: REGISTRY_BRANCH
-            })
-        }
-    );
-
-    if (!response.ok) {
-        const error = await response.json();
-        // Show detailed error information from GitHub API
-        let errorDetails = error.message || response.status;
-        if (error.errors && error.errors.length > 0) {
-            errorDetails += `\n${error.errors.map(e => `  - ${e.message || JSON.stringify(e)}`).join('\n')}`;
-        }
-        throw new Error(`Failed to create PR: ${errorDetails}`);
-    }
-
-    const data = await response.json();
-    return data.html_url;
-};
-
-/**
- * Create unpublish PR request
- * @param {string} token - GitHub token
- * @param {string} username - GitHub username
- * @param {string} branch - Branch name
- * @param {string} repoUrl - GitHub repository URL to remove
- * @returns {string} PR URL
- */
-const createUnpublishPRRequest = async function (token, username, branch, repoUrl) {
-    // Extract repo name from URL for title
-    const repoName = repoUrl.split('/').pop();
-    const title = `Remove: ${repoName}`;
-    const body = generateUnpublishPRBody({
-        pluginId: repoName,
-        pluginName: repoName,
-        version: 'all',
-        reason: `Remove repository: ${repoUrl}`
-    });
 
     const response = await fetch(
         `https://api.github.com/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/pulls`,
@@ -585,38 +511,6 @@ const createPullRequest = async function (token, packageInfo, repoUrl) {
     return {url: prUrl, isUpdate: !!existingPR, isNew};
 };
 
-/**
- * Create a Pull Request to remove a plugin repository from registry
- * @param {string} token - GitHub token
- * @param {string} repoUrl - GitHub repository URL to remove
- * @returns {string} PR URL
- */
-const createUnpublishPR = async function (token, repoUrl) {
-    const user = await getAuthenticatedUser(token);
-
-    // Extract repo name from URL for branch name
-    const repoName = repoUrl.split('/').pop();
-    const branchName = `unpublish/${repoName}`;
-
-    // Fork, create branch
-    await ensureFork(token, user.login);
-    const baseSha = await getLatestCommitSha(token, REGISTRY_OWNER, REGISTRY_REPO, REGISTRY_BRANCH);
-    await createBranch(token, user.login, REGISTRY_REPO, branchName, baseSha);
-
-    // Get and update registry.json
-    const registryJson = await getRegistryJson(token, REGISTRY_OWNER, REGISTRY_REPO, REGISTRY_BRANCH);
-    const updatedRegistry = removeFromRegistryJson(registryJson, repoUrl);
-
-    // Commit changes
-    await commitUnpublishChanges(token, user.login, REGISTRY_REPO, branchName, updatedRegistry, repoUrl);
-
-    // Create PR
-    const prUrl = await createUnpublishPRRequest(token, user.login, branchName, repoUrl);
-
-    return prUrl;
-};
-
 module.exports = {
-    createPullRequest,
-    createUnpublishPR
+    createPullRequest
 };

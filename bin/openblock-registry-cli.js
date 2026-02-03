@@ -16,7 +16,6 @@ const publish = require('../src/commands/publish');
 const validate = require('../src/commands/validate');
 const info = require('../src/commands/info');
 const config = require('../src/commands/config');
-const unpublish = require('../src/commands/unpublish');
 const i18n = require('../src/commands/i18n');
 const verifyTag = require('../src/commands/verify-tag');
 
@@ -63,11 +62,6 @@ program
     .command('config <action> [key] [value]')
     .description('Manage CLI configuration (get/set/list)')
     .action(config);
-
-program
-    .command('unpublish [version]')
-    .description('Remove a published version from the registry')
-    .action(unpublish);
 
 program
     .command('i18n [subcommand]')

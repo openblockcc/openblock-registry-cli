@@ -10,6 +10,7 @@
 const path = require('path');
 const chalk = require('chalk');
 const ora = require('ora');
+const fs = require('fs');
 
 const {parseBuildIgnore} = require('../lib/builder/build-ignore');
 const {cleanDist, copyResources, copySingleFile, processAndCopyPackageJson} = require('../lib/builder/copy-resources');
@@ -25,6 +26,7 @@ const {
     registerToolchainMerge
 } = require('../lib/builder/resource-register');
 const {startWatching} = require('../lib/builder/watcher');
+const {removeInterfaceFromTranslations} = require('../lib/builder/translations-processor');
 
 // Dependency resolution
 const {parseDependencies, validateLocalDependencies} = require('../lib/deps/dependency-resolver');
@@ -168,11 +170,21 @@ const dev = async function () {
         }
 
         // Parse ignore patterns
-        const ignorePatterns = parseBuildIgnore(projectDir);
+        let ignorePatterns = parseBuildIgnore(projectDir);
 
         // Get entry points and simple files
         const entryPoints = getEntryPoints(srcDir, false);
         const simpleSrcFiles = getSimpleSrcFiles(srcDir, false);
+
+        // Auto-ignore entry points (files that will be bundled by esbuild)
+        // This prevents them from being copied twice
+        if (entryPoints.length > 0) {
+            const entryPointPatterns = entryPoints.map(file => {
+                const relativePath = path.relative(projectDir, file);
+                return relativePath.replace(/\\/g, '/');
+            });
+            ignorePatterns = [...ignorePatterns, ...entryPointPatterns];
+        }
 
         // Show build info
         console.log(chalk.bold('\nBuild Information:'));
@@ -190,6 +202,10 @@ const dev = async function () {
 
         if (simpleSrcFiles.length > 0) {
             console.log(chalk.dim(`${simpleSrcFiles.length} simple file(s) will be copied directly`));
+        }
+
+        if (entryPoints.length > 0) {
+            console.log(chalk.dim(`${entryPoints.length} file(s) auto-ignored (will be bundled)`));
         }
         console.log('');
 
@@ -228,22 +244,7 @@ const dev = async function () {
             spinner.succeed('esbuild watch mode started');
         }
 
-        // Copy resources
-        spinner.start('Copying resources...');
-        const copiedCount = copyResources(projectDir, distDir, ignorePatterns);
-        spinner.succeed(`Copied ${copiedCount} files to dist/`);
-
-        // Copy simple src files
-        if (simpleSrcFiles.length > 0) {
-            simpleSrcFiles.forEach(file => {
-                const relativePath = path.relative(projectDir, file);
-                const destPath = path.join(distDir, relativePath);
-                copySingleFile(file, destPath);
-            });
-            console.log(chalk.dim(`  Copied ${simpleSrcFiles.length} simple src file(s)`));
-        }
-
-        // Process package.json images (convert to base64)
+        // Process package.json images (convert to base64) - do this BEFORE copying resources
         spinner.start('Processing package.json images...');
         const packageJsonSrc = path.join(projectDir, 'package.json');
         const packageJsonDest = path.join(distDir, 'package.json');
@@ -262,8 +263,56 @@ const dev = async function () {
             imageResult.converted.forEach(field => {
                 console.log(chalk.dim(`  - ${field}`));
             });
+
+            // Auto-ignore converted image files (they're now in package.json as base64)
+            if (imageResult.convertedPaths.length > 0) {
+                const imagePatterns = imageResult.convertedPaths.map(imagePath => {
+                    // imagePath is relative to projectDir (e.g., "./assets/icon.png")
+                    return imagePath.replace(/^\.\//, '').replace(/\\/g, '/');
+                });
+                ignorePatterns = [...ignorePatterns, ...imagePatterns];
+                console.log(chalk.dim(`  Auto-ignored ${imageResult.convertedPaths.length} converted image file(s)`));
+            }
         } else {
             spinner.succeed('No local images to convert');
+        }
+
+        // Copy resources
+        spinner.start('Copying resources...');
+        const copiedCount = copyResources(projectDir, distDir, ignorePatterns);
+        spinner.succeed(`Copied ${copiedCount} files to dist/`);
+
+        // Copy simple src files
+        if (simpleSrcFiles.length > 0) {
+            simpleSrcFiles.forEach(file => {
+                const relativePath = path.relative(projectDir, file);
+                const destPath = path.join(distDir, relativePath);
+                copySingleFile(file, destPath);
+            });
+            console.log(chalk.dim(`  Copied ${simpleSrcFiles.length} simple src file(s)`));
+        }
+
+        // Process translations.js - remove interface section (already in package.json l10n)
+        spinner.start('Processing translations.js...');
+        const packageJson = JSON.parse(fs.readFileSync(packageJsonSrc, 'utf-8'));
+        const translationsField = packageJson.openblock?.translations;
+
+        if (translationsField) {
+            // Resolve the translations file path in dist
+            const translationsDistPath = path.join(distDir, translationsField);
+
+            if (fs.existsSync(translationsDistPath)) {
+                const removed = removeInterfaceFromTranslations(translationsDistPath);
+                if (removed) {
+                    spinner.succeed('Removed interface section from translations.js (already in package.json)');
+                } else {
+                    spinner.succeed('No interface section to remove from translations.js');
+                }
+            } else {
+                spinner.succeed('No translations.js file found in dist');
+            }
+        } else {
+            spinner.succeed('No translations field in package.json');
         }
 
         // Register to resource service (initial registration)

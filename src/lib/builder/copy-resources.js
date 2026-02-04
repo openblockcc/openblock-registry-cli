@@ -28,12 +28,13 @@ const copySingleFile = (srcPath, destPath) => {
  * @param {string} projectDir - Project directory
  * @param {string} srcPath - Source package.json path
  * @param {string} destPath - Destination package.json path
- * @returns {Promise<{success: boolean, converted: string[], errors: string[]}>} Processing result
+ * @returns {Promise<{success: boolean, converted: string[], convertedPaths: string[], errors: string[]}>} Processing result
  */
 const processAndCopyPackageJson = async (projectDir, srcPath, destPath) => {
     const result = {
         success: true,
         converted: [],
+        convertedPaths: [], // Paths of converted image files (to be ignored during copy)
         errors: []
     };
 
@@ -59,10 +60,21 @@ const processAndCopyPackageJson = async (projectDir, srcPath, destPath) => {
         if (hasImageFields) {
             processedJson = await processPackageJsonImages(projectDir, packageJson);
 
-            // Track which fields were converted
+            // Track which fields were converted and their file paths
             for (const field of IMAGE_URL_FIELDS) {
-                if (openblock[field] && processedJson.openblock[field] !== openblock[field]) {
+                const originalPath = openblock[field];
+                const processedPath = processedJson.openblock[field];
+
+                if (originalPath && processedPath !== originalPath) {
                     result.converted.push(field);
+
+                    // Add the original image file path to convertedPaths
+                    // This will be used to auto-ignore these files during copy
+                    if (!originalPath.startsWith('data:') &&
+                        !originalPath.startsWith('http://') &&
+                        !originalPath.startsWith('https://')) {
+                        result.convertedPaths.push(originalPath);
+                    }
                 }
             }
         }

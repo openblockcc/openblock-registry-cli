@@ -17,6 +17,7 @@ const {
     runBuild
 } = require('../lib/builder/esbuild-wrapper');
 const {removeInterfaceFromTranslations} = require('../lib/builder/translations-processor');
+const validateOpenBlockFiles = require('../validators/openblock-files');
 
 /**
  * Execute build command
@@ -34,6 +35,28 @@ const build = async function (options = {}) {
     console.log(chalk.cyan('\nOpenBlock Plugin Builder\n'));
 
     try {
+        // Validate openblock file paths
+        spinner.start('Validating openblock file paths...');
+        const fileValidation = validateOpenBlockFiles(projectDir);
+
+        if (!fileValidation.valid) {
+            spinner.fail('OpenBlock file validation failed');
+            console.log(chalk.red('\nFile validation errors:'));
+            fileValidation.errors.forEach(error => {
+                console.log(chalk.red(`   ✗ ${error}`));
+            });
+            process.exit(1);
+        }
+
+        if (fileValidation.warnings.length > 0) {
+            spinner.warn('OpenBlock file validation passed with warnings');
+            fileValidation.warnings.forEach(warning => {
+                console.log(chalk.yellow(`   ⚠ ${warning}`));
+            });
+        } else {
+            spinner.succeed('OpenBlock file paths validated');
+        }
+
         // Parse ignore patterns
         let ignorePatterns = parseBuildIgnore(projectDir);
 
@@ -134,10 +157,10 @@ const build = async function (options = {}) {
 
             // Auto-ignore converted image files (they're now in package.json as base64)
             if (imageResult.convertedPaths.length > 0) {
-                const imagePatterns = imageResult.convertedPaths.map(imagePath => {
+                const imagePatterns = imageResult.convertedPaths.map(imagePath =>
                     // imagePath is relative to projectDir (e.g., "./assets/icon.png")
-                    return imagePath.replace(/^\.\//, '').replace(/\\/g, '/');
-                });
+                    imagePath.replace(/^\.\//, '').replace(/\\/g, '/')
+                );
                 ignorePatterns = [...ignorePatterns, ...imagePatterns];
                 console.log(chalk.dim(`  Auto-ignored ${imageResult.convertedPaths.length} converted image file(s)`));
             }

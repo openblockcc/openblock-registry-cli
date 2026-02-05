@@ -13,6 +13,7 @@ const validateRemoteRepo = require('../validators/remote-repo');
 const {validateIdUniqueness} = require('../validators/id-uniqueness');
 const validatePackageStructure = require('../validators/package-structure');
 const validateTranslations = require('../validators/translations');
+const validateOpenBlockFiles = require('../validators/openblock-files');
 const logger = require('../utils/logger');
 
 // GitHub URL pattern: https://github.com/owner/repo
@@ -77,12 +78,32 @@ const validate = async function (options = {}) {
         await validateRequiredFiles();
         spinner.succeed('Required files validated');
 
-        // 4. Validate remote repository
+        // 4. Validate openblock file paths
+        spinner.start('Validating openblock file paths...');
+        const fileValidation = validateOpenBlockFiles();
+        if (!fileValidation.valid) {
+            spinner.fail('OpenBlock file validation failed');
+            console.log(chalk.red('\nFile validation errors:'));
+            fileValidation.errors.forEach(error => {
+                console.log(chalk.red(`   ✗ ${error}`));
+            });
+            throw new Error('OpenBlock file validation failed');
+        }
+        if (fileValidation.warnings.length > 0) {
+            spinner.warn('OpenBlock file paths validated with warnings');
+            fileValidation.warnings.forEach(warning => {
+                console.log(chalk.yellow(`   ⚠ ${warning}`));
+            });
+        } else {
+            spinner.succeed('OpenBlock file paths validated');
+        }
+
+        // 5. Validate remote repository
         spinner.start('Checking remote repository...');
         const repoInfo = await validateRemoteRepo(packageInfo.repository);
         spinner.succeed('Remote repository accessible');
 
-        // 5. Validate GitHub URL format
+        // 6. Validate GitHub URL format
         spinner.start('Validating GitHub URL...');
         const repoUrl = getGitHubUrl(packageInfo.repository, repoInfo);
         if (!repoUrl || !GITHUB_URL_PATTERN.test(repoUrl)) {
@@ -94,7 +115,7 @@ const validate = async function (options = {}) {
         }
         spinner.succeed(`GitHub URL: ${chalk.green(repoUrl)}`);
 
-        // 6. Check plugin ID uniqueness
+        // 7. Check plugin ID uniqueness
         spinner.start('Checking plugin ID uniqueness...');
         const idCheckResult = await validateIdUniqueness(packageInfo, repoInfo);
         if (idCheckResult.isNew) {
@@ -103,7 +124,7 @@ const validate = async function (options = {}) {
             spinner.succeed(`Plugin ID ${chalk.green(packageInfo.openblock.id)} exists (updating)`);
         }
 
-        // 7. Validate package.json structure
+        // 8. Validate package.json structure
         spinner.start('Validating package.json structure...');
         const structureResult = validatePackageStructure(packageInfo);
         if (!structureResult.valid) {
@@ -116,7 +137,7 @@ const validate = async function (options = {}) {
         }
         spinner.succeed('Package.json structure validated');
 
-        // 8. Validate translations
+        // 9. Validate translations
         spinner.start('Validating translations...');
         const translationsResult = validateTranslations(packageInfo);
         if (!translationsResult.valid) {

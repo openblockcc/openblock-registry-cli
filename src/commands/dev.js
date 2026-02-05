@@ -27,6 +27,7 @@ const {
 } = require('../lib/builder/resource-register');
 const {startWatching} = require('../lib/builder/watcher');
 const {removeInterfaceFromTranslations} = require('../lib/builder/translations-processor');
+const validateOpenBlockFiles = require('../validators/openblock-files');
 
 // Dependency resolution
 const {parseDependencies, validateLocalDependencies} = require('../lib/deps/dependency-resolver');
@@ -162,7 +163,29 @@ const dev = async function () {
     }
 
     try {
-        // Step 1: Resolve and download dependencies
+        // Step 1: Validate openblock file paths
+        spinner.start('Validating openblock file paths...');
+        const fileValidation = validateOpenBlockFiles(projectDir);
+
+        if (!fileValidation.valid) {
+            spinner.fail('OpenBlock file validation failed');
+            console.log(chalk.red('\nFile validation errors:'));
+            fileValidation.errors.forEach(error => {
+                console.log(chalk.red(`   ✗ ${error}`));
+            });
+            process.exit(1);
+        }
+
+        if (fileValidation.warnings.length > 0) {
+            spinner.warn('OpenBlock file validation passed with warnings');
+            fileValidation.warnings.forEach(warning => {
+                console.log(chalk.yellow(`   ⚠ ${warning}`));
+            });
+        } else {
+            spinner.succeed('OpenBlock file paths validated');
+        }
+
+        // Step 2: Resolve and download dependencies
         const depResult = await resolveDependencies(projectDir);
         if (!depResult.success) {
             console.log(chalk.red('\nDependency resolution failed. Please fix the errors above.'));
@@ -266,10 +289,10 @@ const dev = async function () {
 
             // Auto-ignore converted image files (they're now in package.json as base64)
             if (imageResult.convertedPaths.length > 0) {
-                const imagePatterns = imageResult.convertedPaths.map(imagePath => {
+                const imagePatterns = imageResult.convertedPaths.map(imagePath =>
                     // imagePath is relative to projectDir (e.g., "./assets/icon.png")
-                    return imagePath.replace(/^\.\//, '').replace(/\\/g, '/');
-                });
+                    imagePath.replace(/^\.\//, '').replace(/\\/g, '/')
+                );
                 ignorePatterns = [...ignorePatterns, ...imagePatterns];
                 console.log(chalk.dim(`  Auto-ignored ${imageResult.convertedPaths.length} converted image file(s)`));
             }

@@ -28,7 +28,8 @@ const copySingleFile = (srcPath, destPath) => {
  * @param {string} projectDir - Project directory
  * @param {string} srcPath - Source package.json path
  * @param {string} destPath - Destination package.json path
- * @returns {Promise<{success: boolean, converted: string[], convertedPaths: string[], errors: string[]}>} Processing result
+ * @returns {Promise<{success: boolean, converted: string[], convertedPaths: string[], errors: string[]}>}
+ * Processing result
  */
 const processAndCopyPackageJson = async (projectDir, srcPath, destPath) => {
     const result = {

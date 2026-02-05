@@ -120,10 +120,10 @@ const removeInterfaceFromTranslations = translationsPath => {
 
     try {
         // Read the translations.js file
-        let content = fs.readFileSync(translationsPath, 'utf-8');
+        const content = fs.readFileSync(translationsPath, 'utf-8');
 
         // Parse the file to extract translations object
-        let tempContent = content.replace(/export\s+default\s+/g, 'module.exports = ');
+        const tempContent = content.replace(/export\s+default\s+/g, 'module.exports = ');
 
         const sandbox = {
             exports: {},

@@ -6,10 +6,7 @@
 
 const http = require('http');
 const fetch = require('node-fetch');
-
-// Resource Service connection
-const RESOURCE_SERVICE_HOST = 'localhost';
-const RESOURCE_SERVICE_PORT = 20112;
+const {RESOURCE_SERVICE_HOST, RESOURCE_SERVICE_PORT} = require('../config/resource-service');
 
 // Cache TTL for packages.json
 const PACKAGES_CACHE_TTL = 3600000; // 1 hour in ms

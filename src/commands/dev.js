@@ -3,8 +3,8 @@
  * Development mode with hot reload and Resource Service registration
  *
  * Simplified architecture:
- * - Libraries: Only local paths supported (bundled in packages)
- * - Toolchains: Only 'latest' version, merged to unified directory
+ * - Toolchains: Only remote toolchain name (downloads latest version)
+ * - Libraries: Automatically discovered by build tools (no explicit handling)
  */
 
 const path = require('path');
@@ -29,47 +29,32 @@ const {startWatching} = require('../lib/builder/watcher');
 const {removeInterfaceFromTranslations} = require('../lib/builder/translations-processor');
 const validateOpenBlockFiles = require('../validators/openblock-files');
 
-// Dependency resolution
-const {parseDependencies, validateLocalDependencies} = require('../lib/deps/dependency-resolver');
-const {fetchAllToolchains} = require('../lib/deps/registry-fetcher');
+// Toolchain resolution
+const {parseToolchain} = require('../lib/toolchain/toolchain-resolver');
+const {fetchAllToolchains} = require('../lib/toolchain/registry-fetcher');
 
 /**
- * Resolve and download remote toolchains.
- * Libraries are now local-only (no remote download needed).
+ * Resolve and download remote toolchain.
  *
  * @param {string} projectDir - Project directory
- * @returns {Promise<{success: boolean, toolchainResults: Array}>} Dependency resolution result
+ * @returns {Promise<{success: boolean, toolchainResults: Array}>} Toolchain resolution result
  */
-const resolveDependencies = async projectDir => {
-    let deps;
+const resolveToolchain = async projectDir => {
+    let parsed;
 
     try {
-        deps = parseDependencies(projectDir);
+        parsed = parseToolchain(projectDir);
     } catch (error) {
-        // No dependencies defined is OK
+        // No toolchain defined is OK
         if (error.message === 'package.json not found') {
             throw error;
         }
-        return {success: true, toolchainResults: []};
-    }
-
-    // Show warnings from parsing (e.g., remote libraries not supported)
-    if (deps.warnings && deps.warnings.length > 0) {
-        console.log(chalk.yellow('\nDependency warnings:'));
-        deps.warnings.forEach(warn => console.log(chalk.yellow(`  [WARN] ${warn}`)));
-    }
-
-    // Validate local dependencies
-    const localValidation = validateLocalDependencies(projectDir, deps);
-    if (!localValidation.valid) {
-        console.log(chalk.red('\nLocal dependency errors:'));
-        localValidation.errors.forEach(err => console.log(chalk.red(`  [ERROR] ${err}`)));
+        console.log(chalk.red(`\n[ERROR] ${error.message}`));
         return {success: false, toolchainResults: []};
     }
 
-    // Check if there are remote toolchains to download
-    const remoteToolchains = deps.toolchains.remote;
-    if (Object.keys(remoteToolchains).length === 0) {
+    // Check if there is a toolchain to download
+    if (!parsed.toolchain) {
         return {success: true, toolchainResults: []};
     }
 
@@ -78,11 +63,11 @@ const resolveDependencies = async projectDir => {
 
     const toolchainResults = [];
 
-    // Download remote toolchains
+    // Download toolchain
     let currentTcName = '';
     let lastTcPercent = -1;
 
-    const tcResult = await fetchAllToolchains(projectDir, remoteToolchains, {
+    const tcResult = await fetchAllToolchains(projectDir, parsed.toolchain, {
         onProgress: (name, status) => {
             if (status === 'fetching') {
                 currentTcName = name;
@@ -113,22 +98,27 @@ const resolveDependencies = async projectDir => {
     toolchainResults.push(...tcResult.results);
 
     if (tcResult.success) {
-        const skipped = tcResult.results.filter(r => r.skipped).length;
-        const downloaded = tcResult.results.filter(r => !r.skipped && r.success).length;
-        console.log(chalk.green(`Toolchains: ${downloaded} downloaded, ${skipped} already exist`));
+        const skippedResults = tcResult.results.filter(r => r.skipped);
+        const downloadedResults = tcResult.results.filter(r => !r.skipped && r.success);
 
-        // Merge downloaded toolchains to unified directory
-        const downloadedResults = tcResult.results.filter(r => r.extractPath);
-        if (downloadedResults.length > 0) {
-            console.log(chalk.dim('  Merging toolchains to unified directory...'));
-            const mergeResult = await registerToolchainMerge(downloadedResults);
+        // Show download summary
+        if (downloadedResults.length > 0 || skippedResults.length > 0) {
+            console.log(chalk.green(`Toolchains: ${downloadedResults.length} downloaded, ${skippedResults.length} cached`));
+        }
+
+        // Merge all toolchains with extractPath to unified directory
+        const mergeableResults = tcResult.results.filter(r => r.extractPath);
+        if (mergeableResults.length > 0) {
+            const mergeResult = await registerToolchainMerge(mergeableResults);
             if (mergeResult.success) {
-                console.log(chalk.green(`  [OK] Merged ${mergeResult.merged} components`));
+                if (mergeResult.merged > 0) {
+                    console.log(chalk.green(`  Registered: ${mergeResult.merged} new components`));
+                } else {
+                    console.log(chalk.dim(`  Registered: all components up-to-date`));
+                }
             } else {
-                console.log(chalk.yellow(`  [WARN] Merge completed with errors`));
+                console.log(chalk.yellow(`  [WARN] Registration completed with errors`));
             }
-            // Extracted toolchains are kept in .openblock/toolchains/
-            // Archives are cached in .openblock/downloads/
         }
     } else {
         console.log(chalk.red(`[FAIL] Some toolchains failed to download`));
@@ -158,7 +148,7 @@ const dev = async function () {
     const serviceCheck = await checkResourceService();
     if (!serviceCheck.running) {
         console.log(chalk.red(`[FAIL] ${serviceCheck.message}`));
-        console.log(chalk.yellow('\nPlease start OpenBlock Resource Service before running dev command.'));
+        console.log(chalk.yellow('\nPlease start openblock-service before running dev command.'));
         process.exit(1);
     }
 
@@ -185,10 +175,10 @@ const dev = async function () {
             spinner.succeed('OpenBlock file paths validated');
         }
 
-        // Step 2: Resolve and download dependencies
-        const depResult = await resolveDependencies(projectDir);
-        if (!depResult.success) {
-            console.log(chalk.red('\nDependency resolution failed. Please fix the errors above.'));
+        // Step 2: Resolve and download toolchain
+        const toolchainResult = await resolveToolchain(projectDir);
+        if (!toolchainResult.success) {
+            console.log(chalk.red('\nToolchain resolution failed. Please fix the errors above.'));
             process.exit(1);
         }
 

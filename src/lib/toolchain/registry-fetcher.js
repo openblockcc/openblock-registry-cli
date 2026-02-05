@@ -376,11 +376,11 @@ const fetchToolchain = async (projectDir, name, options = {}) => {
 };
 
 /**
- * Fetch all remote toolchains.
+ * Fetch a single toolchain or multiple toolchains.
  * Downloads and extracts to temp directory for later merging.
  *
  * @param {string} projectDir - Project directory
- * @param {object.<string, string>} toolchains - Map of toolchain name to 'latest'
+ * @param {string|string[]} toolchains - Toolchain name or array of names
  * @param {object} options - Options
  * @param {Function} [options.onProgress] - Progress callback (name, status, result)
  * @param {Function} [options.hasToolchain] - Function to check if toolchain exists
@@ -388,9 +388,20 @@ const fetchToolchain = async (projectDir, name, options = {}) => {
  */
 const fetchAllToolchains = async (projectDir, toolchains, options = {}) => {
     const results = [];
-    const entries = Object.entries(toolchains);
 
-    for (const [name] of entries) {
+    // Normalize input to array of names
+    let names = [];
+    if (typeof toolchains === 'string') {
+        // Single toolchain name
+        names = [toolchains];
+    } else if (Array.isArray(toolchains)) {
+        // Array of names
+        names = toolchains;
+    } else {
+        throw new Error('toolchains must be a string or array of strings');
+    }
+
+    for (const name of names) {
         if (options.onProgress) {
             options.onProgress(name, 'fetching', null);
         }

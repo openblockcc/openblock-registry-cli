@@ -6,9 +6,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-
-const RESOURCE_SERVICE_HOST = 'localhost';
-const RESOURCE_SERVICE_PORT = 20112;
+const {RESOURCE_SERVICE_HOST, RESOURCE_SERVICE_PORT} = require('../config/resource-service');
 
 /**
  * Check if Resource Service is running
@@ -31,9 +29,9 @@ const checkResourceService = () => new Promise(resolve => {
         res.on('end', () => {
             try {
                 const json = JSON.parse(data);
-                // Check for openblock-resource-server (the actual server name)
-                if (json.name === 'openblock-resource-server') {
-                    resolve({running: true, message: 'Resource Service is running'});
+                // Check for openblock-service (the unified service name)
+                if (json.name === 'openblock-service') {
+                    resolve({running: true, message: 'openblock-service is running'});
                 } else {
                     resolve({
                         running: false,

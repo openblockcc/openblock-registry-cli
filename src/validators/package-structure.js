@@ -82,7 +82,7 @@ const validateDeviceFields = function (openblock) {
     }
 
     // Check tags
-    const validDeviceTags = ['arduino', 'micropython', 'kit'];
+    const validDeviceTags = ['arduino', 'microPython', 'kit'];
     if (!Array.isArray(openblock.tags) || openblock.tags.length === 0) {
         errors.push('openblock.tags must be a non-empty array');
     } else {

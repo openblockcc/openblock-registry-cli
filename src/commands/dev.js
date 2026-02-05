@@ -103,7 +103,8 @@ const resolveToolchain = async projectDir => {
 
         // Show download summary
         if (downloadedResults.length > 0 || skippedResults.length > 0) {
-            console.log(chalk.green(`Toolchains: ${downloadedResults.length} downloaded, ${skippedResults.length} cached`));
+            console.log(
+                chalk.green(`Toolchains: ${downloadedResults.length} downloaded, ${skippedResults.length} cached`));
         }
 
         // Merge all toolchains with extractPath to unified directory

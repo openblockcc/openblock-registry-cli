@@ -8,7 +8,7 @@ const path = require('path');
 const semver = require('semver');
 
 const REQUIRED_OPENBLOCK_FIELDS = ['name'];
-const VALID_DEVICE_TYPES = ['arduino', 'micropython', 'microbit'];
+const VALID_DEVICE_TYPES = ['arduino', 'microPython', 'microbit'];
 
 /**
  * Normalize GitHub URL to https format

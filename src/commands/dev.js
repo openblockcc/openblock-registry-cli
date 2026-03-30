@@ -291,6 +291,17 @@ const dev = async function () {
             spinner.succeed('No local images to convert');
         }
 
+        // Auto-ignore package.json (already handled by processAndCopyPackageJson)
+        ignorePatterns = [...ignorePatterns, 'package.json'];
+
+        // Auto-ignore simple src files (will be copied explicitly after copyResources)
+        if (simpleSrcFiles.length > 0) {
+            const simpleSrcPatterns = simpleSrcFiles.map(file =>
+                path.relative(projectDir, file).replace(/\\/g, '/')
+            );
+            ignorePatterns = [...ignorePatterns, ...simpleSrcPatterns];
+        }
+
         // Copy resources
         spinner.start('Copying resources...');
         const copiedCount = copyResources(projectDir, distDir, ignorePatterns);

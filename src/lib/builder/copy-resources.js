@@ -55,7 +55,7 @@ const processAndCopyPackageJson = async (projectDir, srcPath, destPath) => {
                 !value.startsWith('https://');
         });
 
-        const processedJson = packageJson;
+        let processedJson = packageJson;
 
         // Step 3: Compress and copy image files to dist if needed
         if (hasImageFields) {

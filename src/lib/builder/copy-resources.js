@@ -45,7 +45,7 @@ const processAndCopyPackageJson = async (projectDir, srcPath, destPath) => {
         // Step 1: Inject interface translations from translations.js into l10n field
         packageJson = injectInterfaceTranslations(projectDir, packageJson);
 
-        // Step 2: Check if there are image fields to process
+        // Step 2: Check if there are local image fields to process
         const openblock = packageJson.openblock || {};
         const hasImageFields = IMAGE_URL_FIELDS.some(field => {
             const value = openblock[field];
@@ -55,28 +55,20 @@ const processAndCopyPackageJson = async (projectDir, srcPath, destPath) => {
                 !value.startsWith('https://');
         });
 
-        let processedJson = packageJson;
+        const processedJson = packageJson;
 
-        // Step 3: Process images and convert to base64 if needed
+        // Step 3: Compress and copy image files to dist if needed
         if (hasImageFields) {
-            processedJson = await processPackageJsonImages(projectDir, packageJson);
+            const {processedPaths} = await processPackageJsonImages(projectDir, path.dirname(destPath), packageJson);
 
-            // Track which fields were converted and their file paths
-            for (const field of IMAGE_URL_FIELDS) {
-                const originalPath = openblock[field];
-                const processedPath = processedJson.openblock[field];
+            for (const imagePath of processedPaths) {
+                // Track which fields were processed
+                const field = IMAGE_URL_FIELDS.find(f => openblock[f] === imagePath);
+                if (field) result.converted.push(field);
 
-                if (originalPath && processedPath !== originalPath) {
-                    result.converted.push(field);
-
-                    // Add the original image file path to convertedPaths
-                    // This will be used to auto-ignore these files during copy
-                    if (!originalPath.startsWith('data:') &&
-                        !originalPath.startsWith('http://') &&
-                        !originalPath.startsWith('https://')) {
-                        result.convertedPaths.push(originalPath);
-                    }
-                }
+                // Add source path to ignore list so copyResources doesn't overwrite
+                // the already-processed file with the uncompressed original
+                result.convertedPaths.push(imagePath.replace(/^\.\//, '').replace(/\\/g, '/'));
             }
         }
 

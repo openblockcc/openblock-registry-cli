@@ -1,5 +1,5 @@
 /**
- * Image processor for converting local image paths to base64
+ * Image processor for compressing and copying local image files to dist
  * Handles image size validation and compression
  */
 
@@ -147,18 +147,20 @@ const compressImage = async (imagePath, targetSize) => {
 };
 
 /**
- * Convert image file to base64 data URI
+ * Compress and copy an image file to the dist directory.
+ * Skips files that are already remote URLs or base64 data URIs.
  * @param {string} projectDir - Project directory
+ * @param {string} distDir - Dist output directory
  * @param {string} imagePath - Relative image path from package.json
- * @returns {Promise<string>} Base64 data URI or original path if not a local file
+ * @returns {Promise<boolean>} True if the file was processed, false if skipped
  */
-const convertImageToBase64 = async (projectDir, imagePath) => {
+const processImageFile = async (projectDir, distDir, imagePath) => {
     // Skip if already base64 or remote URL
     if (!imagePath || imagePath.startsWith('data:') || imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-        return imagePath;
+        return false;
     }
 
-    // Resolve relative path
+    // Resolve relative path from project root
     const fullPath = path.resolve(projectDir, imagePath);
     const resolvedPath = resolveImagePath(fullPath);
 
@@ -166,50 +168,53 @@ const convertImageToBase64 = async (projectDir, imagePath) => {
         throw new Error(`Image file not found: "${imagePath}" (tried extensions: ${IMAGE_EXTENSIONS.join(', ')})`);
     }
 
-    // Read file and check size
-    const stats = fs.statSync(resolvedPath);
-    let buffer;
-    let mimeType = getMimeType(resolvedPath);
+    // Determine destination path (same relative location under distDir)
+    const relativeToProject = path.relative(projectDir, resolvedPath);
+    const destPath = path.join(distDir, relativeToProject);
+    const destDirPath = path.dirname(destPath);
 
-    if (stats.size <= MAX_IMAGE_SIZE) {
-        // File is small enough, read directly
-        buffer = fs.readFileSync(resolvedPath);
-    } else {
-        // File is too large, compress it
-        buffer = await compressImage(resolvedPath, MAX_IMAGE_SIZE);
-        // Update mime type if format changed during compression
-        const ext = path.extname(resolvedPath).toLowerCase();
-        if (!['.png', '.jpg', '.jpeg', '.webp'].includes(ext)) {
-            mimeType = 'image/png'; // Converted to PNG
-        }
+    if (!fs.existsSync(destDirPath)) {
+        fs.mkdirSync(destDirPath, {recursive: true});
     }
 
-    // Convert to base64 data URI
-    const base64 = buffer.toString('base64');
-    return `data:${mimeType};base64,${base64}`;
+    const stats = fs.statSync(resolvedPath);
+    if (stats.size <= MAX_IMAGE_SIZE) {
+        fs.copyFileSync(resolvedPath, destPath);
+    } else {
+        // Compress to fit within size limit
+        const buffer = await compressImage(resolvedPath, MAX_IMAGE_SIZE);
+        fs.writeFileSync(destPath, buffer);
+    }
+
+    return true;
 };
 
 /**
- * Process package.json and convert all image URLs to base64
+ * Process package.json image fields: compress and copy each local image to dist.
+ * The package.json itself is not modified — relative paths remain as-is.
  * @param {string} projectDir - Project directory
+ * @param {string} distDir - Dist output directory
  * @param {object} packageJson - Parsed package.json object
- * @returns {Promise<object>} Modified package.json with base64 images
+ * @returns {Promise<{processedPaths: string[]}>} Relative paths of images that were processed
  */
-const processPackageJsonImages = async (projectDir, packageJson) => {
+const processPackageJsonImages = async (projectDir, distDir, packageJson) => {
     if (!packageJson.openblock) {
-        return packageJson;
+        return {processedPaths: []};
     }
 
-    const result = JSON.parse(JSON.stringify(packageJson)); // Deep clone
-    const openblock = result.openblock;
+    const openblock = packageJson.openblock;
+    const processedPaths = [];
 
     for (const field of IMAGE_URL_FIELDS) {
         if (openblock[field]) {
-            openblock[field] = await convertImageToBase64(projectDir, openblock[field]);
+            const processed = await processImageFile(projectDir, distDir, openblock[field]);
+            if (processed) {
+                processedPaths.push(openblock[field]);
+            }
         }
     }
 
-    return result;
+    return {processedPaths};
 };
 
 module.exports = {
@@ -219,6 +224,6 @@ module.exports = {
     getMimeType,
     resolveImagePath,
     compressImage,
-    convertImageToBase64,
+    processImageFile,
     processPackageJsonImages
 };

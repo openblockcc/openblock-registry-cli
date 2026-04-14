@@ -258,7 +258,7 @@ const dev = async function () {
             spinner.succeed('esbuild watch mode started');
         }
 
-        // Process package.json images (convert to base64) - do this BEFORE copying resources
+        // Process package.json images (compress and copy to dist) - do this BEFORE copying resources
         spinner.start('Processing package.json images...');
         const packageJsonSrc = path.join(projectDir, 'package.json');
         const packageJsonDest = path.join(distDir, 'package.json');
@@ -273,22 +273,19 @@ const dev = async function () {
         }
 
         if (imageResult.converted.length > 0) {
-            spinner.succeed(`Converted ${imageResult.converted.length} image(s) to base64`);
+            spinner.succeed(`Processed ${imageResult.converted.length} image(s)`);
             imageResult.converted.forEach(field => {
                 console.log(chalk.dim(`  - ${field}`));
             });
 
-            // Auto-ignore converted image files (they're now in package.json as base64)
+            // Auto-ignore processed image source files so copyResources doesn't
+            // overwrite the already-processed copy in dist with the original
             if (imageResult.convertedPaths.length > 0) {
-                const imagePatterns = imageResult.convertedPaths.map(imagePath =>
-                    // imagePath is relative to projectDir (e.g., "./assets/icon.png")
-                    imagePath.replace(/^\.\//, '').replace(/\\/g, '/')
-                );
-                ignorePatterns = [...ignorePatterns, ...imagePatterns];
-                console.log(chalk.dim(`  Auto-ignored ${imageResult.convertedPaths.length} converted image file(s)`));
+                ignorePatterns = [...ignorePatterns, ...imageResult.convertedPaths];
+                console.log(chalk.dim(`  Auto-ignored ${imageResult.convertedPaths.length} processed image file(s)`));
             }
         } else {
-            spinner.succeed('No local images to convert');
+            spinner.succeed('No local images to process');
         }
 
         // Auto-ignore package.json (already handled by processAndCopyPackageJson)

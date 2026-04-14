@@ -39,7 +39,7 @@ const fetchFromResourceService = () => new Promise(resolve => {
             if (res.statusCode === 200) {
                 try {
                     const result = JSON.parse(data);
-                    // Response is {success: true, data: {libraries: [], toolchains: []}}
+                    // Response is {success: true, data: {toolchains: []}}
                     if (result.success && result.data) {
                         resolve(result.data);
                     } else {
@@ -96,7 +96,7 @@ const fetchFromRegistry = async registryUrl => {
  * @param {object} options - Options
  * @param {string} [options.registryUrl] - Optional direct registry URL
  * @param {boolean} [options.forceRefresh] - Force refresh from network
- * @returns {Promise<object>} Packages index with libraries and toolchains arrays
+ * @returns {Promise<object>} Packages index with toolchains array
  */
 const getPackagesIndex = async (options = {}) => {
     const {registryUrl, forceRefresh = false} = options;
@@ -124,9 +124,6 @@ const getPackagesIndex = async (options = {}) => {
     // Default empty structure
     if (!packages) {
         packages = {
-            devices: [],
-            extensions: [],
-            libraries: [],
             toolchains: []
         };
     }
@@ -136,19 +133,6 @@ const getPackagesIndex = async (options = {}) => {
     cacheTimestamp = Date.now();
 
     return packages;
-};
-
-/**
- * Find a library in packages index
- * @param {object} packages - Packages index
- * @param {string} name - Library name/id
- * @returns {object|null} Library info or null
- */
-const findLibrary = (packages, name) => {
-    if (!packages.libraries || !Array.isArray(packages.libraries)) {
-        return null;
-    }
-    return packages.libraries.find(lib => lib.id === name || lib.name === name) || null;
 };
 
 /**
@@ -176,7 +160,6 @@ module.exports = {
     getPackagesIndex,
     fetchFromResourceService,
     fetchFromRegistry,
-    findLibrary,
     findToolchain,
     clearCache,
     RESOURCE_SERVICE_HOST,

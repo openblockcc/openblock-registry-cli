@@ -69,18 +69,6 @@ const validateDeviceFields = function (openblock) {
         }
     }
 
-    // Check programLanguage
-    const validProgramLanguages = ['block', 'cpp', 'microPython'];
-    if (!Array.isArray(openblock.programLanguage) || openblock.programLanguage.length === 0) {
-        errors.push('openblock.programLanguage must be a non-empty array');
-    } else {
-        const invalidLangs = openblock.programLanguage.filter(l => !validProgramLanguages.includes(l));
-        if (invalidLangs.length > 0) {
-            errors.push(`Invalid programLanguage values: ${invalidLangs.join(', ')}.` +
-                ` Must be: ${validProgramLanguages.join(', ')}`);
-        }
-    }
-
     // Check tags
     const validDeviceTags = ['arduino', 'microPython', 'kit'];
     if (!Array.isArray(openblock.tags) || openblock.tags.length === 0) {

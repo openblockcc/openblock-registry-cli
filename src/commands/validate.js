@@ -8,6 +8,7 @@ const ora = require('ora');
 
 const validatePackageJson = require('../validators/package-json');
 const validateGitStatus = require('../validators/git-status');
+const validateSubmodules = require('../validators/submodules');
 const validateRequiredFiles = require('../validators/required-files');
 const validateRemoteRepo = require('../validators/remote-repo');
 const {validateIdUniqueness} = require('../validators/id-uniqueness');
@@ -71,6 +72,22 @@ const validate = async function (options = {}) {
             spinner.start('Checking Git status...');
             await validateGitStatus(packageInfo.version);
             spinner.succeed(`Git tag ${chalk.green(packageInfo.version)} exists and pushed`);
+        }
+
+        // 2a. Validate submodules (registry clones with --recurse-submodules,
+        // so missing/unpushed submodules will break the server-side build).
+        if (options.skipTag) {
+            spinner.info('Submodule validation skipped (--skip-tag)');
+        } else {
+            spinner.start('Validating submodules...');
+            const submoduleResult = await validateSubmodules();
+            if (submoduleResult.hasSubmodules) {
+                spinner.succeed(
+                    `Submodules validated: ${chalk.green(submoduleResult.submodules.length)} entry(ies)`
+                );
+            } else {
+                spinner.succeed('No submodules');
+            }
         }
 
         // 3. Validate required files

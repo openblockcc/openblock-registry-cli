@@ -7,6 +7,9 @@ const fs = require('fs');
 const path = require('path');
 
 // Default ignore patterns (always ignored)
+// Patterns starting with "**/" match the segment at any depth.
+// This is required for submodules: each submodule directory has its own
+// .git/.github/.gitignore/.gitattributes that should not ship in dist.
 const DEFAULT_IGNORE_PATTERNS = [
     'node_modules',
     '.git',
@@ -17,7 +20,17 @@ const DEFAULT_IGNORE_PATTERNS = [
     '.eslintignore',
     'package-lock.json',
     '.vscode',
-    '.idea'
+    '.idea',
+    // Nested git/CI metadata from submodules
+    '**/.git',
+    '**/.github',
+    '**/.gitignore',
+    '**/.gitattributes',
+    '**/.gitmodules',
+    // Nested noise that may live inside vendored libraries
+    '**/node_modules',
+    '**/.vscode',
+    '**/.idea'
 ];
 
 /**
@@ -56,15 +69,25 @@ const parseBuildIgnore = (projectDir = process.cwd()) => {
  */
 const shouldIgnore = (filePath, ignorePatterns) => {
     const normalizedPath = filePath.replace(/\\/g, '/').replace(/^\.\//, '');
+    const segments = normalizedPath.split('/');
 
     return ignorePatterns.some(pattern => {
+        // "**/X" matches segment X at any depth.
+        // This catches both the file/dir itself (last segment === X)
+        // and anything inside it (X is some intermediate segment).
+        if (pattern.startsWith('**/')) {
+            const target = pattern.slice(3);
+            if (!target) return false;
+            return segments.includes(target);
+        }
+
         // Exact match
         if (normalizedPath === pattern) return true;
 
         // Directory match (path starts with pattern)
         if (normalizedPath.startsWith(`${pattern}/`)) return true;
 
-        // Wildcard pattern support (basic)
+        // Wildcard pattern support (basic, top-level only)
         const regexPattern = pattern
             .replace(/\./g, '\\.')
             .replace(/\*/g, '.*');

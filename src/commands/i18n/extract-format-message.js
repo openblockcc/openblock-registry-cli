@@ -5,7 +5,8 @@
  * Extract i18n content from a single plugin resource.
  *
  * Extraction sources:
- * 1. package.json - openblock.name and openblock.description (formatMessage fields)
+ * 1. package.json - any {formatMessage:{id,default}} occurrence under `openblock`
+ *    (e.g. name, description, firmwares[].name, ...)
  * 2. main - formatMessage() calls in extension/device source files
  * 3. msg - Block message definitions
  *
@@ -74,6 +75,30 @@ const extractFormatMessages = content => {
 };
 
 
+/**
+ * Recursively walk a value and collect every {formatMessage:{id,default}}.
+ * Mirrors the runtime-side recursive resolver in distro-vm so that any
+ * {formatMessage} placed anywhere under `openblock` gets picked up here.
+ * @param {*} value - Value to walk (object/array/primitive)
+ * @param {Array<{id: string, default: string}>} out - Sink to push extracted entries
+ */
+const collectFormatMessages = (value, out) => {
+    if (!value || typeof value !== 'object') return;
+    if (value.formatMessage && typeof value.formatMessage === 'object') {
+        const fm = value.formatMessage;
+        if (typeof fm.id === 'string' && typeof fm.default === 'string') {
+            out.push({id: fm.id, default: fm.default});
+        }
+        return;
+    }
+    if (Array.isArray(value)) {
+        value.forEach(item => collectFormatMessages(item, out));
+        return;
+    }
+    Object.values(value).forEach(v => collectFormatMessages(v, out));
+};
+
+
 // ============================================================================
 // Resource Scanners
 // ============================================================================
@@ -98,34 +123,7 @@ const scanPlugin = pluginDir => {
             const openblock = pkg.openblock;
 
             if (openblock) {
-                // Interface translations - extract from name and description
-                // Only extract if openblock.name/description contains formatMessage
-                // Skip if it's a plain string (handled by runtime directly)
-
-                // Extract name - only if it has formatMessage
-                if (openblock.name && typeof openblock.name === 'object' && openblock.name.formatMessage) {
-                    const fm = openblock.name.formatMessage;
-                    if (fm.id && fm.default) {
-                        result.interface.push({
-                            id: fm.id,
-                            default: fm.default
-                        });
-                    }
-                }
-                // If openblock.name is a plain string, skip it (no extraction needed)
-
-                // Extract description - only if it has formatMessage
-                if (openblock.description && typeof openblock.description === 'object' &&
-                    openblock.description.formatMessage) {
-                    const fm = openblock.description.formatMessage;
-                    if (fm.id && fm.default) {
-                        result.interface.push({
-                            id: fm.id,
-                            default: fm.default
-                        });
-                    }
-                }
-                // If openblock.description is a plain string, skip it (no extraction needed)
+                collectFormatMessages(openblock, result.interface);
             }
         } catch (e) {
             console.error(`Failed to parse ${packageJsonPath}:`, e.message);

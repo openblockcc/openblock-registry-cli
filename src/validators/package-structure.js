@@ -80,6 +80,40 @@ const validateDeviceFields = function (openblock) {
         }
     }
 
+    // Check libraries (optional): must be a string (relative directory path)
+    if (typeof openblock.libraries !== 'undefined' && typeof openblock.libraries !== 'string') {
+        errors.push('openblock.libraries must be a string (relative directory path)');
+    }
+
+    // Check firmwares (optional): array of {id, name, file}; ids must be unique
+    if (typeof openblock.firmwares !== 'undefined') {
+        if (Array.isArray(openblock.firmwares)) {
+            const seenIds = new Set();
+            openblock.firmwares.forEach((fw, i) => {
+                if (!fw || typeof fw !== 'object') {
+                    errors.push(`openblock.firmwares[${i}] must be an object`);
+                    return;
+                }
+                if (typeof fw.id !== 'string' || !fw.id) {
+                    errors.push(`openblock.firmwares[${i}].id must be a non-empty string`);
+                } else if (seenIds.has(fw.id)) {
+                    errors.push(`openblock.firmwares[${i}].id "${fw.id}" is duplicated`);
+                } else {
+                    seenIds.add(fw.id);
+                }
+                if (!isValidFormatMessageOrString(fw.name)) {
+                    errors.push(`openblock.firmwares[${i}].name must be a non-empty string` +
+                        ` or a {formatMessage:{id,default}} object`);
+                }
+                if (typeof fw.file !== 'string' || !fw.file) {
+                    errors.push(`openblock.firmwares[${i}].file must be a non-empty string`);
+                }
+            });
+        } else {
+            errors.push('openblock.firmwares must be an array of {id, name, file} entries');
+        }
+    }
+
     return errors;
 };
 

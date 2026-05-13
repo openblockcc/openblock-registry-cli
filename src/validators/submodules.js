@@ -56,7 +56,7 @@ const parseSubmodules = () => {
  * @param {string} submodulePath - Path of submodule relative to repo root
  * @returns {string} Commit SHA the parent repo points to
  */
-const getRecordedSha = (submodulePath) => {
+const getRecordedSha = submodulePath => {
     let treeOutput;
     try {
         // Quote the path for paths containing spaces

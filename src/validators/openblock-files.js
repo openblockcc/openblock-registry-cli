@@ -103,21 +103,48 @@ const validateOpenBlockFiles = function (dir = process.cwd()) {
         }
     }
 
-    // Check firmwares directory if specified (for devices)
+    // Check firmwares entries if specified (for devices)
+    // firmwares is an array of {id, name, file} objects; each file path must exist.
     if (openblock.firmwares) {
-        const firmwaresPath = openblock.firmwares;
-        if (typeof firmwaresPath === 'string') {
-            const resolvedFirmPath = path.resolve(dir, firmwaresPath);
-            if (fs.existsSync(resolvedFirmPath)) {
-                const stats = fs.statSync(resolvedFirmPath);
-                if (stats.isDirectory()) {
-                    // Directory exists and is valid
-                } else {
-                    warnings.push(`openblock.firmwares must be a directory: "${firmwaresPath}"`);
+        if (Array.isArray(openblock.firmwares)) {
+            const seenIds = new Set();
+            openblock.firmwares.forEach((fw, i) => {
+                if (!fw || typeof fw !== 'object') {
+                    errors.push(`openblock.firmwares[${i}] must be an object`);
+                    return;
                 }
-            } else {
-                warnings.push(`Firmwares directory not found: openblock.firmwares = "${firmwaresPath}"`);
-            }
+                if (typeof fw.id !== 'string' || !fw.id) {
+                    errors.push(`openblock.firmwares[${i}].id is required and must be a non-empty string`);
+                } else if (seenIds.has(fw.id)) {
+                    errors.push(`openblock.firmwares[${i}].id "${fw.id}" is duplicated`);
+                } else {
+                    seenIds.add(fw.id);
+                }
+                const nameIsString = typeof fw.name === 'string' && fw.name;
+                const nameIsFormatMessage = fw.name && typeof fw.name === 'object' &&
+                    fw.name.formatMessage && typeof fw.name.formatMessage === 'object' &&
+                    typeof fw.name.formatMessage.id === 'string' &&
+                    typeof fw.name.formatMessage.default === 'string';
+                if (!nameIsString && !nameIsFormatMessage) {
+                    errors.push(`openblock.firmwares[${i}].name is required and must be a non-empty string` +
+                        ` or a {formatMessage:{id,default}} object`);
+                }
+                if (typeof fw.file !== 'string' || !fw.file) {
+                    errors.push(`openblock.firmwares[${i}].file is required and must be a non-empty string`);
+                    return;
+                }
+                const resolved = path.resolve(dir, fw.file);
+                if (!fs.existsSync(resolved)) {
+                    errors.push(
+                        `Firmware file not found: openblock.firmwares[${i}].file = "${fw.file}"\n` +
+                        `   Resolved path: "${resolved}"`
+                    );
+                } else if (!fs.statSync(resolved).isFile()) {
+                    errors.push(`openblock.firmwares[${i}].file must be a file: "${fw.file}"`);
+                }
+            });
+        } else {
+            errors.push('openblock.firmwares must be an array of {id, name, file} entries');
         }
     }
 

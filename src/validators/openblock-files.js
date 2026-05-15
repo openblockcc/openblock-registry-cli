@@ -148,6 +148,47 @@ const validateOpenBlockFiles = function (dir = process.cwd()) {
         }
     }
 
+    // Check examples entries if specified (applies to both device and extension).
+    // examples is an array of {id, name, file, [description], [iconURL]} objects;
+    // each file path must exist; optional iconURL path must exist when provided.
+    // Structural validation (id uniqueness, name shape, etc.) lives in
+    // package-structure.js — here we only verify on-disk presence.
+    if (openblock.examples) {
+        if (Array.isArray(openblock.examples)) {
+            openblock.examples.forEach((ex, i) => {
+                if (!ex || typeof ex !== 'object') return; // structural error already reported
+                if (typeof ex.file === 'string' && ex.file) {
+                    const resolved = path.resolve(dir, ex.file);
+                    if (!fs.existsSync(resolved)) {
+                        errors.push(
+                            `Example file not found: openblock.examples[${i}].file = "${ex.file}"\n` +
+                            `   Resolved path: "${resolved}"`
+                        );
+                    } else if (!fs.statSync(resolved).isFile()) {
+                        errors.push(`openblock.examples[${i}].file must be a file: "${ex.file}"`);
+                    }
+                }
+                // iconURL is optional. Pass-through values that already look like
+                // absolute URLs or data URIs (the runtime/service handle them as-is).
+                if (typeof ex.iconURL === 'string' && ex.iconURL &&
+                    !ex.iconURL.startsWith('http://') &&
+                    !ex.iconURL.startsWith('https://') &&
+                    !ex.iconURL.startsWith('data:')) {
+                    const resolvedIcon = path.resolve(dir, ex.iconURL);
+                    if (!fs.existsSync(resolvedIcon)) {
+                        errors.push(
+                            `Example icon not found: openblock.examples[${i}].iconURL = "${ex.iconURL}"\n` +
+                            `   Resolved path: "${resolvedIcon}"`
+                        );
+                    } else if (!fs.statSync(resolvedIcon).isFile()) {
+                        errors.push(`openblock.examples[${i}].iconURL must be a file: "${ex.iconURL}"`);
+                    }
+                }
+            });
+        }
+        // Non-array case is reported by package-structure.js; skip here.
+    }
+
     return {
         valid: errors.length === 0,
         errors,

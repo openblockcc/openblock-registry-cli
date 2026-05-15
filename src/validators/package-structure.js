@@ -193,6 +193,45 @@ const validatePackageStructure = function (packageJson) {
         errors.push('openblock.translations is required');
     }
 
+    // Check examples (optional, applies to both device and extension):
+    // array of {id, name, file, [description], [iconURL]}; ids must be unique
+    if (typeof openblock.examples !== 'undefined') {
+        if (Array.isArray(openblock.examples)) {
+            const seenExampleIds = new Set();
+            openblock.examples.forEach((ex, i) => {
+                if (!ex || typeof ex !== 'object') {
+                    errors.push(`openblock.examples[${i}] must be an object`);
+                    return;
+                }
+                if (typeof ex.id !== 'string' || !ex.id) {
+                    errors.push(`openblock.examples[${i}].id must be a non-empty string`);
+                } else if (seenExampleIds.has(ex.id)) {
+                    errors.push(`openblock.examples[${i}].id "${ex.id}" is duplicated`);
+                } else {
+                    seenExampleIds.add(ex.id);
+                }
+                if (!isValidFormatMessageOrString(ex.name)) {
+                    errors.push(`openblock.examples[${i}].name must be a non-empty string` +
+                        ` or a {formatMessage:{id,default}} object`);
+                }
+                if (typeof ex.description !== 'undefined' &&
+                    !isValidFormatMessageOrString(ex.description)) {
+                    errors.push(`openblock.examples[${i}].description must be a non-empty string` +
+                        ` or a {formatMessage:{id,default}} object`);
+                }
+                if (typeof ex.file !== 'string' || !ex.file) {
+                    errors.push(`openblock.examples[${i}].file must be a non-empty string`);
+                }
+                if (typeof ex.iconURL !== 'undefined' &&
+                    (typeof ex.iconURL !== 'string' || !ex.iconURL)) {
+                    errors.push(`openblock.examples[${i}].iconURL must be a non-empty string`);
+                }
+            });
+        } else {
+            errors.push('openblock.examples must be an array of {id, name, file} entries');
+        }
+    }
+
     // Type-specific validation
     const pluginType = openblock.pluginType;
     if (pluginType === 'device') {

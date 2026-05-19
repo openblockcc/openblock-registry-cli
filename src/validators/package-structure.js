@@ -4,6 +4,29 @@
  */
 
 /**
+ * Validate openblock.arch field on a device or extension manifest.
+ * Structural check only: non-empty array of non-empty strings.
+ * Content is intentionally unconstrained — third-party vendors may coin
+ * custom identifiers (e.g. acme-customboard) and the OpenBlock canonical
+ * set evolves over time. Extensions may use wildcards (e.g. arduino-*).
+ * @param {any} arch - Value of openblock.arch
+ * @returns {Array<string>} Error messages
+ */
+const validateArch = function (arch) {
+    const errors = [];
+    if (!Array.isArray(arch) || arch.length === 0) {
+        errors.push('openblock.arch must be a non-empty array');
+        return errors;
+    }
+    arch.forEach((item, i) => {
+        if (typeof item !== 'string' || !item) {
+            errors.push(`openblock.arch[${i}] must be a non-empty string`);
+        }
+    });
+    return errors;
+};
+
+/**
  * Validate formatMessage structure or string
  * @param {any} value - Value to check
  * @returns {boolean} True if valid formatMessage or string
@@ -80,6 +103,9 @@ const validateDeviceFields = function (openblock) {
         }
     }
 
+    // Check arch: required, array of non-empty strings (content unconstrained)
+    errors.push(...validateArch(openblock.arch));
+
     // Check libraries (optional): must be a string (relative directory path)
     if (typeof openblock.libraries !== 'undefined' && typeof openblock.libraries !== 'string') {
         errors.push('openblock.libraries must be a string (relative directory path)');
@@ -130,9 +156,12 @@ const validateExtensionFields = function (openblock) {
         errors.push('openblock.extensionId is required for extension plugins');
     }
 
-    // Check supportDevice
-    if (!Array.isArray(openblock.supportDevice) || openblock.supportDevice.length === 0) {
-        errors.push('openblock.supportDevice must be a non-empty array');
+    // Check arch: required, array of non-empty strings (wildcards allowed)
+    errors.push(...validateArch(openblock.arch));
+
+    // Reject legacy supportDevice field outright (replaced by arch)
+    if (typeof openblock.supportDevice !== 'undefined') {
+        errors.push('openblock.supportDevice is no longer supported; use openblock.arch instead');
     }
 
     // Check tags

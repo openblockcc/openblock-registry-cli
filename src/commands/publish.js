@@ -34,8 +34,20 @@ const publish = async function (options = {}) {
         const token = await getGitHubToken();
 
         // 3. Create or Update Pull Request
-        spinner.start('Creating Pull Request...');
+        spinner.start('Submitting to OpenBlock Registry...');
         const prResult = await createPullRequest(token, packageInfo, repoUrl);
+
+        // Already registered: the registry only tracks repository URLs, and new
+        // versions are synced automatically from git tags. Re-submitting would
+        // only open an empty PR, so skip it and tell the user what to do instead.
+        if (prResult.skipped) {
+            spinner.info('This repository is already registered');
+            console.log(chalk.green('\n[OK] Nothing to submit.\n'));
+            console.log('   Your repository is already in the registry, so no pull request is needed.');
+            console.log('   To publish a new version, push a new X.Y.Z git tag to your repository -');
+            console.log('   it will be picked up automatically during the next daily scan.\n');
+            return;
+        }
 
         if (prResult.isUpdate) {
             spinner.succeed('Existing Pull Request updated');

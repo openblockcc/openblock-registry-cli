@@ -427,7 +427,7 @@ const createPR = async function (token, username, branch, packageInfo, repoUrl, 
  * @param {string} token - GitHub token
  * @param {object} packageInfo - Package information from package.json
  * @param {string} repoUrl - GitHub repository URL (validated)
- * @returns {{url: string, isUpdate: boolean, isNew: boolean}} PR result
+ * @returns {{url: string, isUpdate: boolean, isNew: boolean, skipped: boolean}} PR result
  */
 const createPullRequest = async function (token, packageInfo, repoUrl) {
     const openblock = packageInfo.openblock;
@@ -438,19 +438,31 @@ const createPullRequest = async function (token, packageInfo, repoUrl) {
     const user = await getAuthenticatedUser(token);
     const branchName = `publish/${pluginId}`;
 
-    // 1. Fork the registry (if not already forked)
-    await ensureFork(token, user.login);
-
-    // 2. Check if there's an existing open PR for this branch
+    // 1. Check if there's an existing open PR for this branch
     const existingPR = await findExistingPR(token, user.login, branchName);
 
-    // 3. Check if branch exists
+    // 2. Get current registry.json from upstream main and check if the URL is
+    //    already registered. The registry only stores repository URLs; new
+    //    versions are picked up automatically from git tags by the daily scan,
+    //    so re-publishing an already-registered repo would only produce an
+    //    empty PR (no registry.json diff). Skip it before mutating anything.
+    const registryJson = await getRegistryJson(token, REGISTRY_OWNER, REGISTRY_REPO, REGISTRY_BRANCH);
+    const {registry: updatedRegistry, isNew} = updateRegistryJson(registryJson, repoUrl, pluginType);
+
+    if (!isNew && !existingPR) {
+        return {url: null, isUpdate: false, isNew: false, skipped: true};
+    }
+
+    // 3. Fork the registry (if not already forked)
+    await ensureFork(token, user.login);
+
+    // 4. Check if branch exists
     const branchAlreadyExists = await branchExists(token, user.login, REGISTRY_REPO, branchName);
 
-    // 4. Get the latest commit SHA from main branch
+    // 5. Get the latest commit SHA from main branch
     const baseSha = await getLatestCommitSha(token, REGISTRY_OWNER, REGISTRY_REPO, REGISTRY_BRANCH);
 
-    // 5. Handle branch creation/recreation
+    // 6. Handle branch creation/recreation
     if (branchAlreadyExists) {
         if (existingPR) {
             // If there's an existing open PR, DON'T delete the branch (it would close the PR)
@@ -466,16 +478,10 @@ const createPullRequest = async function (token, packageInfo, repoUrl) {
         await createBranch(token, user.login, REGISTRY_REPO, branchName, baseSha);
     }
 
-    // 6. Get current registry.json
-    const registryJson = await getRegistryJson(token, REGISTRY_OWNER, REGISTRY_REPO, REGISTRY_BRANCH);
-
-    // 7. Update registry.json with repository URL
-    const {registry: updatedRegistry, isNew} = updateRegistryJson(registryJson, repoUrl, pluginType);
-
-    // 8. Commit the changes
+    // 7. Commit the changes (registry already computed in step 2)
     await commitRegistryChanges(token, user.login, REGISTRY_REPO, branchName, updatedRegistry, repoUrl);
 
-    // 9. Create or update Pull Request
+    // 8. Create or update Pull Request
     let prUrl;
     if (existingPR) {
         // Update existing PR body with new information
@@ -488,7 +494,7 @@ const createPullRequest = async function (token, packageInfo, repoUrl) {
         );
     }
 
-    return {url: prUrl, isUpdate: !!existingPR, isNew};
+    return {url: prUrl, isUpdate: !!existingPR, isNew, skipped: false};
 };
 
 module.exports = {

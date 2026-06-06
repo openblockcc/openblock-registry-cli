@@ -18,6 +18,7 @@ const info = require('../src/commands/info');
 const config = require('../src/commands/config');
 const i18n = require('../src/commands/i18n');
 const verifyTag = require('../src/commands/verify-tag');
+const checkDisplay = require('../src/commands/check-display');
 
 program
     .name('openblock-registry-cli')
@@ -73,5 +74,10 @@ program
     .command('verify-tag [tag]')
     .description('Verify git tag matches package.json version (used by husky pre-push hook)')
     .action(verifyTag);
+
+program
+    .command('check-display')
+    .description('Check whether the display channel changed vs the approved baseline (used by husky pre-push hook)')
+    .action(checkDisplay);
 
 program.parse();

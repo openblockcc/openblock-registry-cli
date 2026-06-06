@@ -9,6 +9,7 @@ const ora = require('ora');
 const validate = require('./validate');
 const {getGitHubToken} = require('../github/auth');
 const {createPullRequest} = require('../github/pr');
+const {resolveApprovedPlan} = require('../lib/approved-baseline');
 const logger = require('../utils/logger');
 
 /**
@@ -30,20 +31,32 @@ const publish = async function (options = {}) {
             return;
         }
 
-        // 2. Get GitHub token
+        // 2. Resolve the display-freeze baseline. A display change (name, icon,
+        //    description, ...) needs a reviewed PR updating approved/{id}.json;
+        //    a pure functional update leaves the baseline untouched.
+        spinner.start('Checking display baseline...');
+        const approvedPlan = await resolveApprovedPlan(packageInfo, repoUrl, process.cwd());
+        if (approvedPlan.needsUpdate) {
+            spinner.info('Display fields changed - a baseline review PR will be opened');
+        } else {
+            spinner.succeed('Display baseline unchanged');
+        }
+
+        // 3. Get GitHub token
         const token = await getGitHubToken();
 
-        // 3. Create or Update Pull Request
+        // 4. Create or Update Pull Request
         spinner.start('Submitting to OpenBlock Registry...');
-        const prResult = await createPullRequest(token, packageInfo, repoUrl);
+        const prResult = await createPullRequest(token, packageInfo, repoUrl, approvedPlan);
 
-        // Already registered: the registry only tracks repository URLs, and new
-        // versions are synced automatically from git tags. Re-submitting would
-        // only open an empty PR, so skip it and tell the user what to do instead.
+        // Nothing changed: the repo is already registered and its display is
+        // unchanged. New code versions sync automatically from git tags, so no PR
+        // is needed.
         if (prResult.skipped) {
             spinner.info('This repository is already registered');
             console.log(chalk.green('\n[OK] Nothing to submit.\n'));
-            console.log('   Your repository is already in the registry, so no pull request is needed.');
+            console.log('   Your repository is already in the registry and its display is unchanged,');
+            console.log('   so no pull request is needed.');
             console.log('   To publish a new version, push a new X.Y.Z git tag to your repository -');
             console.log('   it will be picked up automatically during the next daily scan.\n');
             return;

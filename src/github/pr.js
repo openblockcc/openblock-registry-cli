@@ -337,41 +337,45 @@ const commitRegistryChanges = async function (token, owner, repo, branch, conten
 };
 
 /**
- * Helper to normalize i18n field (string or formatMessage object)
- * @param {string|object} value - Field value
- * @returns {string} Normalized string value
+ * Commit the frozen display baseline (approved/{id}.json + reviewer icon bytes)
+ * to the branch (§5.9). The PR-validation bot renders an authoritative report
+ * and verifies this baseline against the published tag; a maintainer reviews it.
+ * @param {string} token - GitHub token
+ * @param {string} owner - Fork owner
+ * @param {string} repo - Repository name
+ * @param {string} branch - Branch name
+ * @param {object} plan - Plan from resolveApprovedPlan ({id, record, iconFiles})
  */
-const normalizeI18n = value => {
-    if (typeof value === 'string') return value;
-    if (value && typeof value === 'object' && value.formatMessage) {
-        return value.formatMessage.default || value.formatMessage.id || '';
+const commitApprovedBaseline = async function (token, owner, repo, branch, plan) {
+    const manifestPath = `approved/${plan.id}.json`;
+    const manifestSha = await getFileSha(token, owner, repo, branch, manifestPath);
+    const manifestContent = `${JSON.stringify(plan.record, null, 4)}\n`;
+    await commitFile(
+        token, owner, repo, branch, manifestPath, manifestContent,
+        `chore: update display baseline for ${plan.id}`, manifestSha
+    );
+
+    // Icon bytes are committed for PR image diffs; the security comparison only
+    // uses the hashes inside the JSON, so a stale/absent icon file is harmless.
+    for (const icon of plan.iconFiles) {
+        const iconSha = await getFileSha(token, owner, repo, branch, icon.repoPath);
+        await commitFile(
+            token, owner, repo, branch, icon.repoPath, icon.content,
+            `chore: update display icon for ${plan.id}`, iconSha
+        );
     }
-    return '';
 };
 
 /**
- * Build PR body content
+ * Build PR body content. Deliberately carries no plugin details — every review
+ * fact comes from the registry bot's authoritative report and the PR diff (§5.5).
  * @param {object} packageInfo - Package information
- * @param {string} repoUrl - GitHub repository URL
- * @param {boolean} isNewPlugin - Whether this is a new plugin
  * @returns {string} PR body markdown
  */
-const buildPRBody = (packageInfo, repoUrl, isNewPlugin) => {
+const buildPRBody = packageInfo => {
     const openblock = packageInfo.openblock;
-    const pluginName = normalizeI18n(openblock.name) || openblock.id;
-    const description = normalizeI18n(openblock.description) || packageInfo.description || '';
-    const isDevice = !!openblock.deviceId;
-
     return generatePublishPRBody({
-        pluginId: openblock.id,
-        pluginName,
-        pluginType: isDevice ? 'device' : 'extension',
-        version: packageInfo.version,
-        repository: repoUrl,
-        description,
-        author: packageInfo.author || '',
-        iconURL: openblock.iconURL || '',
-        isNewPlugin: isNewPlugin
+        pluginId: openblock.id || openblock.deviceId || openblock.extensionId
     });
 };
 
@@ -381,13 +385,11 @@ const buildPRBody = (packageInfo, repoUrl, isNewPlugin) => {
  * @param {string} username - GitHub username
  * @param {string} branch - Branch name
  * @param {object} packageInfo - Package information
- * @param {string} repoUrl - GitHub repository URL
- * @param {boolean} isNewPlugin - Whether this is a new plugin
  * @returns {string} PR URL
  */
-const createPR = async function (token, username, branch, packageInfo, repoUrl, isNewPlugin) {
+const createPR = async function (token, username, branch, packageInfo) {
     const title = generatePRTitle('publish', packageInfo.openblock.id, packageInfo.version);
-    const body = buildPRBody(packageInfo, repoUrl, isNewPlugin);
+    const body = buildPRBody(packageInfo);
 
     const response = await fetch(
         `https://api.github.com/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/pulls`,
@@ -423,13 +425,15 @@ const createPR = async function (token, username, branch, packageInfo, repoUrl, 
 };
 
 /**
- * Create a Pull Request to add a plugin repository to registry
+ * Create a Pull Request to add a plugin repository to registry and/or update its
+ * frozen display baseline.
  * @param {string} token - GitHub token
  * @param {object} packageInfo - Package information from package.json
  * @param {string} repoUrl - GitHub repository URL (validated)
+ * @param {object|null} approvedPlan - Plan from resolveApprovedPlan (or null)
  * @returns {{url: string, isUpdate: boolean, isNew: boolean, skipped: boolean}} PR result
  */
-const createPullRequest = async function (token, packageInfo, repoUrl) {
+const createPullRequest = async function (token, packageInfo, repoUrl, approvedPlan = null) {
     const openblock = packageInfo.openblock;
     const pluginId = openblock.id || openblock.deviceId || openblock.extensionId;
     const pluginType = openblock.deviceId ? 'device' : 'extension';
@@ -443,13 +447,16 @@ const createPullRequest = async function (token, packageInfo, repoUrl) {
 
     // 2. Get current registry.json from upstream main and check if the URL is
     //    already registered. The registry only stores repository URLs; new
-    //    versions are picked up automatically from git tags by the daily scan,
-    //    so re-publishing an already-registered repo would only produce an
-    //    empty PR (no registry.json diff). Skip it before mutating anything.
+    //    versions are picked up automatically from git tags by the daily scan.
     const registryJson = await getRegistryJson(token, REGISTRY_OWNER, REGISTRY_REPO, REGISTRY_BRANCH);
     const {registry: updatedRegistry, isNew} = updateRegistryJson(registryJson, repoUrl, pluginType);
 
-    if (!isNew && !existingPR) {
+    // A PR is only needed when something changes: a new repo registration, a
+    // display-baseline update, or an already-open PR to refresh. An already-
+    // registered repo whose display is unchanged needs nothing — new code flows
+    // from git tags automatically.
+    const approvedNeeded = Boolean(approvedPlan && approvedPlan.needsUpdate);
+    if (!isNew && !approvedNeeded && !existingPR) {
         return {url: null, isUpdate: false, isNew: false, skipped: true};
     }
 
@@ -478,20 +485,25 @@ const createPullRequest = async function (token, packageInfo, repoUrl) {
         await createBranch(token, user.login, REGISTRY_REPO, branchName, baseSha);
     }
 
-    // 7. Commit the changes (registry already computed in step 2)
-    await commitRegistryChanges(token, user.login, REGISTRY_REPO, branchName, updatedRegistry, repoUrl);
+    // 7. Commit changes. Only touch registry.json on a new registration (an
+    //    identical re-commit would be rejected as a no-op); always (re)commit the
+    //    display baseline when it needs updating.
+    if (isNew) {
+        await commitRegistryChanges(token, user.login, REGISTRY_REPO, branchName, updatedRegistry, repoUrl);
+    }
+    if (approvedNeeded) {
+        await commitApprovedBaseline(token, user.login, REGISTRY_REPO, branchName, approvedPlan);
+    }
 
     // 8. Create or update Pull Request
     let prUrl;
     if (existingPR) {
         // Update existing PR body with new information
-        const body = buildPRBody(packageInfo, repoUrl, isNew);
+        const body = buildPRBody(packageInfo);
         prUrl = await updatePRBody(token, existingPR.number, body);
     } else {
         // Create new Pull Request
-        prUrl = await createPR(
-            token, user.login, branchName, packageInfo, repoUrl, isNew
-        );
+        prUrl = await createPR(token, user.login, branchName, packageInfo);
     }
 
     return {url: prUrl, isUpdate: !!existingPR, isNew, skipped: false};

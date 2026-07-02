@@ -7,23 +7,16 @@
  * bot's authoritative display report (rendered from the published git tag) and
  * the PR's own registry.json / approved/{id}.json diff. So the body carries no
  * details of its own — restating them would only compete for the reviewer's
- * attention with the trustworthy report. It is a one-line pointer, nothing more,
- * and stays true whether the PR is opened by the CLI or by hand.
+ * attention with the trustworthy report. It is left empty on purpose.
  */
 
 /**
- * Generate PR body for publishing a new plugin or version. Intentionally minimal:
- * it states where the review information actually lives and nothing else.
- * @param {object} options - PR options
- * @param {string} options.pluginId - Plugin ID
- * @returns {string} PR body markdown
+ * Generate PR body for publishing a new plugin or version. Intentionally empty:
+ * all review information lives in the registry bot's report and the PR diff, so
+ * the body adds nothing.
+ * @returns {string} Empty PR body
  */
-const generatePublishPRBody = options => {
-    const {pluginId} = options;
-
-    return `Review the display report below and the \`registry.json\` / \`approved/${pluginId}.json\` diff.
-`;
-};
+const generatePublishPRBody = () => '';
 
 /**
  * Generate PR title

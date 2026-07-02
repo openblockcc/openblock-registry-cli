@@ -367,17 +367,11 @@ const commitApprovedBaseline = async function (token, owner, repo, branch, plan)
 };
 
 /**
- * Build PR body content. Deliberately carries no plugin details — every review
- * fact comes from the registry bot's authoritative report and the PR diff (§5.5).
- * @param {object} packageInfo - Package information
+ * Build PR body content. Deliberately empty — every review fact comes from the
+ * registry bot's authoritative report and the PR diff (§5.5).
  * @returns {string} PR body markdown
  */
-const buildPRBody = packageInfo => {
-    const openblock = packageInfo.openblock;
-    return generatePublishPRBody({
-        pluginId: openblock.id || openblock.deviceId || openblock.extensionId
-    });
-};
+const buildPRBody = () => generatePublishPRBody();
 
 /**
  * Create PR
@@ -389,7 +383,7 @@ const buildPRBody = packageInfo => {
  */
 const createPR = async function (token, username, branch, packageInfo) {
     const title = generatePRTitle('publish', packageInfo.openblock.id, packageInfo.version);
-    const body = buildPRBody(packageInfo);
+    const body = buildPRBody();
 
     const response = await fetch(
         `https://api.github.com/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/pulls`,
@@ -499,7 +493,7 @@ const createPullRequest = async function (token, packageInfo, repoUrl, approvedP
     let prUrl;
     if (existingPR) {
         // Update existing PR body with new information
-        const body = buildPRBody(packageInfo);
+        const body = buildPRBody();
         prUrl = await updatePRBody(token, existingPR.number, body);
     } else {
         // Create new Pull Request

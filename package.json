@@ -1,6 +1,6 @@
 {
     "name": "openblock-registry-cli",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "description": "CLI tool for publishing plugins to OpenBlock Registry",
     "author": "OpenBlock Team",
     "license": "MIT",

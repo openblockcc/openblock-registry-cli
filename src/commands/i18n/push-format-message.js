@@ -13,7 +13,7 @@
  *   node push-format-message.js [--dir=path/to/resources]
  */
 
-const {execSync} = require('child_process');
+const {execFileSync} = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
@@ -37,19 +37,38 @@ const parseArgs = () => {
 };
 
 /**
- * Execute a command synchronously
- * @param {string} cmd - Command to execute
+ * Resolve openblock-l10n's `tx-push-src` bin to an absolute script path. It is
+ * invoked directly with the current Node binary rather than as a bare command,
+ * so it does not rely on $PATH or node_modules/.bin being set up — which they are
+ * not when this CLI is launched by absolute path from a plain `node` process.
+ * @returns {string} Absolute path to the tx-push-src script
+ */
+const resolveTxPushSrcBin = () => {
+    const pkgJsonPath = require.resolve('openblock-l10n/package.json');
+    const {bin} = require(pkgJsonPath);
+    const binRel = typeof bin === 'string' ? bin : bin && bin['tx-push-src'];
+    if (!binRel) {
+        throw new Error('openblock-l10n does not expose a tx-push-src bin');
+    }
+    return path.resolve(path.dirname(pkgJsonPath), binRel);
+};
+
+/**
+ * Run tx-push-src with the current Node binary and explicit args (no shell, no
+ * $PATH lookup, and no argument splitting on spaces in file paths).
+ * @param {string} binPath - Absolute path to the tx-push-src script
+ * @param {string[]} args - Arguments passed to tx-push-src
  * @returns {boolean} True if successful, false otherwise
  */
-const runCommand = cmd => {
+const runTxPushSrc = (binPath, args) => {
     try {
-        const output = execSync(cmd, {encoding: 'utf8'});
+        const output = execFileSync(process.execPath, [binPath, ...args], {encoding: 'utf8'});
         if (output) {
             console.log(output);
         }
         return true;
     } catch (error) {
-        console.error(`Error executing: ${cmd}`);
+        console.error(`Error executing: tx-push-src ${args.join(' ')}`);
         console.error(error.message);
         return false;
     }
@@ -94,11 +113,11 @@ const main = () => {
     }
 
     // Push each resource to Transifex
+    const txPushSrcBin = resolveTxPushSrcBin();
     let allSuccess = true;
     for (const resource of resources) {
         console.log(`Pushing ${resource.name}...`);
-        const cmd = `tx-push-src openblock-resources ${resource.name} ${resource.file}`;
-        const success = runCommand(cmd);
+        const success = runTxPushSrc(txPushSrcBin, ['openblock-resources', resource.name, resource.file]);
 
         if (success) {
             console.log(`✓ ${resource.name} pushed successfully\n`);

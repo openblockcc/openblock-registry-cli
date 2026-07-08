@@ -201,6 +201,18 @@ const validateExtensionFields = function (openblock) {
     // Check arch: required, array of non-empty strings (wildcards allowed)
     errors.push(...validateArch(openblock.arch));
 
+    // Check programMode: required, non-empty array of realtime/upload
+    const validProgramModes = ['realtime', 'upload'];
+    if (!Array.isArray(openblock.programMode) || openblock.programMode.length === 0) {
+        errors.push('openblock.programMode must be a non-empty array');
+    } else {
+        const invalidModes = openblock.programMode.filter(m => !validProgramModes.includes(m));
+        if (invalidModes.length > 0) {
+            errors.push(`Invalid programMode values: ${invalidModes.join(', ')}.` +
+                ` Must be: ${validProgramModes.join(', ')}`);
+        }
+    }
+
     // Reject legacy supportDevice field outright (replaced by arch)
     if (typeof openblock.supportDevice !== 'undefined') {
         errors.push('openblock.supportDevice is no longer supported; use openblock.arch instead');
